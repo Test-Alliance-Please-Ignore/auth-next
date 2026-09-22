@@ -94,6 +94,7 @@ function makeFakeThis(client: FakeClient, overrides: Record<string, unknown> = {
 		scheduleUserSyncAlarm: proto.scheduleUserSyncAlarm,
 		cleanupUserSyncStates: proto.cleanupUserSyncStates,
 		findProvisionedSubjects: proto.findProvisionedSubjects,
+		getRegisteredProjectedUsers: proto.getRegisteredProjectedUsers,
 		deleteAccountsInner: proto.deleteAccountsInner,
 		queuePendingDeletes: proto.queuePendingDeletes,
 		alarm: proto.alarm,
@@ -385,6 +386,96 @@ describe('MumbleDO.syncUserGroups', () => {
 		)
 		expect(result).toEqual({ synced: [], skipped: [] })
 		expect(client.assignGroups).not.toHaveBeenCalled()
+	})
+})
+
+describe('MumbleDO.syncAccountProfiles', () => {
+	it('preserves queued account settings and skips users without a registration', async () => {
+		const client = makeFakeClient()
+		client.getUserState.mockResolvedValue({
+			serverId: 'srv',
+			users: [
+				{ ...SNAPSHOT, subjectId: 'ready', murmurUserId: 41 },
+				{
+					...SNAPSHOT,
+					subjectId: 'queued',
+					status: 'queued',
+					murmurUserId: 42,
+					enabled: false,
+					comment: 'Keep this comment',
+				},
+				{ ...SNAPSHOT, subjectId: 'new', status: 'queued', murmurUserId: null },
+				{ ...SNAPSHOT, subjectId: 'absent', status: 'absent', murmurUserId: null },
+			],
+		})
+		const result = await MumbleDO.prototype.syncAccountProfiles.call(
+			makeFakeThis(client) as any,
+			'srv',
+			['ready', 'queued', 'new', 'absent', 'missing'].map((subjectId) => ({
+				subjectId,
+				displayName: 'Pilot One [NEW]',
+			}))
+		)
+
+		expect(result).toEqual({ synced: ['ready', 'queued'], skipped: ['new', 'absent', 'missing'] })
+		expect(client.batchSync).toHaveBeenCalledWith('srv', [
+			{
+				subjectId: 'ready',
+				loginName: 'pilot_one',
+				displayName: 'Pilot One [NEW]',
+				enabled: true,
+				groups: ['alpha'],
+			},
+			{
+				subjectId: 'queued',
+				loginName: 'pilot_one',
+				displayName: 'Pilot One [NEW]',
+				enabled: false,
+				groups: ['alpha'],
+				comment: 'Keep this comment',
+			},
+		])
+	})
+
+	it('updates the corporation tag immediately after a group sync queues reconciliation', async () => {
+		const client = makeFakeClient()
+		let account = { ...SNAPSHOT, displayName: 'Pilot One [OLD]' }
+		let status = 'reconciled'
+		client.getLocalAccount.mockImplementation(async () => account)
+		client.getUserState.mockImplementation(async () => ({
+			serverId: 'srv',
+			users: [{ ...account, status, murmurUserId: 42 }],
+		}))
+		client.assignGroups.mockImplementation(async (_serverId, assignments) => {
+			account = { ...account, groups: assignments[0].groups }
+			status = 'queued'
+			return { serverId: 'srv', disconnectedSessions: 0, updated: [account] }
+		})
+		client.batchSync.mockImplementation(async (_serverId, accounts) => {
+			account = { ...account, ...accounts[0] }
+			return { serverId: 'srv', updated: [account] }
+		})
+		const instance = makeFakeThis(client) as any
+
+		await MumbleDO.prototype.syncUserGroups.call(instance, 'srv', [
+			{ subjectId: 'user-1', groups: ['alliance', 'new-corporation'] },
+		])
+		const result = await MumbleDO.prototype.syncAccountProfiles.call(instance, 'srv', [
+			{ subjectId: 'user-1', displayName: 'Pilot One [NEW]' },
+		])
+
+		expect(account.displayName).toBe('Pilot One [NEW]')
+		expect(account.groups).toEqual(['alliance', 'new-corporation'])
+		expect(result).toEqual({ synced: ['user-1'], skipped: [] })
+		expect(client.batchSync).toHaveBeenCalledWith('srv', [
+			{
+				subjectId: 'user-1',
+				loginName: 'pilot_one',
+				displayName: 'Pilot One [NEW]',
+				enabled: true,
+				groups: ['alliance', 'new-corporation'],
+			},
+		])
 	})
 })
 
