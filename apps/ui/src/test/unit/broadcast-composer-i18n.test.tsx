@@ -184,7 +184,7 @@ describe('member broadcast composer localization', () => {
 			await setAppLocale(locale, { persistLocal: false })
 			expect(renderUI(<BroadcastPreviewPane message="" />)).toContain(empty)
 			const html = renderUI(
-				<BroadcastPreviewPane message={'Original text <t:1893456000:F>\n<script>raw</script>'} />
+				<BroadcastPreviewPane message={'Original text <t:1894708800:F>\n<script>raw</script>'} />
 			)
 			expect(html).toContain(preview)
 			expect(html).toContain('Original text')

@@ -99,6 +99,26 @@ export const shellCatalog = defineCatalog(
 			additionalCharacters: 'You can link additional characters to your account later.',
 			creating: 'Creating account…',
 			claim: 'Claim as main character',
+			claimWait: 'Please read carefully ({{count}}s)',
+			warningTitle: 'Important: Do Not Create a Second Account',
+			warningDescription:
+				'You are about to create a new TEST Auth account. If you have created an Auth account before, do not create another one.',
+			warningConsequence: 'Making multiple Auth accounts will make the IT team very mad.',
+			cancel: 'Cancel and return to login',
+			canceling: 'Returning to login…',
+			cancelFailed: 'We could not safely cancel this flow. Please try again.',
+			confirmationTitle: 'Stop and confirm: create a new account',
+			confirmationDescription:
+				'Read this carefully before continuing. This action creates a brand-new Auth account.',
+			confirmationWarning:
+				'Claiming a main character is NOT changing the main character on an existing account.',
+			confirmationExistingAccount:
+				'If you already have an Auth account, click “No, go back to login”. Sign in with your existing main character, then use “Link character” to add this character to that account.',
+			confirmationReadCarefully:
+				'You are about to create a completely new account with this character as its first main character. Please make absolutely sure this is what you intend.',
+			confirmationWait: 'Please read carefully ({{count}}s)',
+			confirmNewAccount: 'Yes, create a new account',
+			cancelAndLogin: 'No, go back to login',
 		},
 		dashboard: {
 			title: 'Dashboard',
@@ -311,6 +331,26 @@ export const shellCatalog = defineCatalog(
 			additionalCharacters: 'Du kannst deinem Konto später weitere Charaktere hinzufügen.',
 			creating: 'Konto wird erstellt…',
 			claim: 'Als Hauptcharakter festlegen',
+			claimWait: 'Bitte sorgfältig lesen ({{count}} s)',
+			warningTitle: 'Wichtig: Erstelle kein zweites Konto',
+			warningDescription:
+				'Du bist dabei, ein neues TEST-Auth-Konto zu erstellen. Wenn du bereits ein Auth-Konto erstellt hast, erstelle kein weiteres.',
+			warningConsequence: 'Das Erstellen mehrerer Auth-Konten macht das IT-Team sehr wütend.',
+			cancel: 'Abbrechen und zur Anmeldung zurückkehren',
+			canceling: 'Zur Anmeldung zurückkehren…',
+			cancelFailed: 'Der Vorgang konnte nicht sicher abgebrochen werden. Bitte versuche es erneut.',
+			confirmationTitle: 'Stopp: Erstellung eines neuen Kontos bestätigen',
+			confirmationDescription:
+				'Lies dies sorgfältig, bevor du fortfährst. Diese Aktion erstellt ein vollständig neues Auth-Konto.',
+			confirmationWarning:
+				'Ein Hauptcharakter wird festzulegen bedeutet NICHT, den Hauptcharakter eines bestehenden Kontos zu ändern.',
+			confirmationExistingAccount:
+				'Wenn du bereits ein Auth-Konto hast, klicke auf „Nein, zurück zur Anmeldung“. Melde dich mit deinem bestehenden Hauptcharakter an und verwende anschließend „Charakter verknüpfen“, um diesen Charakter hinzuzufügen.',
+			confirmationReadCarefully:
+				'Du erstellst gleich ein vollständig neues Konto mit diesem Charakter als erstem Hauptcharakter. Bitte stelle absolut sicher, dass du dies möchtest.',
+			confirmationWait: 'Bitte sorgfältig lesen ({{count}} s)',
+			confirmNewAccount: 'Ja, neues Konto erstellen',
+			cancelAndLogin: 'Nein, zurück zur Anmeldung',
 		},
 		dashboard: {
 			title: 'Übersicht',
@@ -519,6 +559,25 @@ export const shellCatalog = defineCatalog(
 			additionalCharacters: '나중에 계정에 캐릭터를 더 연결할 수 있습니다.',
 			creating: '계정 만드는 중…',
 			claim: '메인 캐릭터로 지정',
+			claimWait: '주의 깊게 읽어 주세요 ({{count}}초)',
+			warningTitle: '중요: 두 번째 계정을 만들지 마세요',
+			warningDescription:
+				'새 TEST Auth 계정을 만들려고 합니다. 이미 Auth 계정을 만든 적이 있다면 새 계정을 만들지 마세요.',
+			warningConsequence: 'Auth 계정을 여러 개 만들면 IT 팀이 매우 화낼 것입니다.',
+			cancel: '취소하고 로그인으로 돌아가기',
+			canceling: '로그인으로 돌아가는 중…',
+			cancelFailed: '이 절차를 안전하게 취소하지 못했습니다. 다시 시도해 주세요.',
+			confirmationTitle: '중지: 새 계정 생성을 확인해 주세요',
+			confirmationDescription:
+				'계속하기 전에 주의 깊게 읽어 주세요. 이 작업은 완전히 새로운 Auth 계정을 만듭니다.',
+			confirmationWarning: '메인 캐릭터 지정은 기존 계정의 메인 캐릭터를 변경하는 작업이 아닙니다.',
+			confirmationExistingAccount:
+				'이미 Auth 계정이 있다면 “아니요, 로그인으로 돌아가기”를 누르세요. 기존 메인 캐릭터로 로그인한 다음 “캐릭터 연결”을 사용해 이 캐릭터를 추가하세요.',
+			confirmationReadCarefully:
+				'이 캐릭터를 첫 번째 메인 캐릭터로 하는 완전히 새로운 계정을 만들려고 합니다. 정말 원하는 작업인지 반드시 확인하세요.',
+			confirmationWait: '주의 깊게 읽어 주세요 ({{count}}초)',
+			confirmNewAccount: '예, 새 계정 만들기',
+			cancelAndLogin: '아니요, 로그인으로 돌아가기',
 		},
 		dashboard: {
 			title: '대시보드',
@@ -730,6 +789,26 @@ export const shellCatalog = defineCatalog(
 			additionalCharacters: 'Puedes vincular otros personajes a tu cuenta más adelante.',
 			creating: 'Creando cuenta…',
 			claim: 'Reclamar como personaje principal',
+			claimWait: 'Lee atentamente ({{count}} s)',
+			warningTitle: 'Importante: no crees una segunda cuenta',
+			warningDescription:
+				'Estás a punto de crear una nueva cuenta de TEST Auth. Si ya has creado una cuenta de Auth, no crees otra.',
+			warningConsequence: 'Crear varias cuentas de Auth hará que el equipo de TI se enfade mucho.',
+			cancel: 'Cancelar y volver al inicio de sesión',
+			canceling: 'Volviendo al inicio de sesión…',
+			cancelFailed: 'No se pudo cancelar este proceso de forma segura. Inténtalo de nuevo.',
+			confirmationTitle: 'Alto: confirma que quieres crear una cuenta nueva',
+			confirmationDescription:
+				'Lee esto atentamente antes de continuar. Esta acción crea una cuenta de Auth completamente nueva.',
+			confirmationWarning:
+				'Reclamar un personaje principal NO cambia el personaje principal de una cuenta existente.',
+			confirmationExistingAccount:
+				'Si ya tienes una cuenta de Auth, haz clic en «No, volver al inicio de sesión». Inicia sesión con tu personaje principal actual y usa «Vincular personaje» para añadir este personaje a esa cuenta.',
+			confirmationReadCarefully:
+				'Estás a punto de crear una cuenta completamente nueva con este personaje como su primer personaje principal. Asegúrate de que esto es lo que quieres.',
+			confirmationWait: 'Lee atentamente ({{count}} s)',
+			confirmNewAccount: 'Sí, crear una cuenta nueva',
+			cancelAndLogin: 'No, volver al inicio de sesión',
 		},
 		dashboard: {
 			title: 'Panel de control',
