@@ -144,6 +144,19 @@ function claimRequest(body: unknown) {
 	)
 }
 
+function cancelClaimRequest(body: unknown, headers: Record<string, string> = {}) {
+	return createApp().request(
+		'/api/auth/claim-main/cancel',
+		{
+			method: 'POST',
+			headers: { 'content-type': 'application/json', ...headers },
+			body: JSON.stringify(body),
+		},
+		env,
+		execCtx()
+	)
+}
+
 function loginState() {
 	return {
 		state: 'state-1',
@@ -354,6 +367,33 @@ describe('POST /api/auth/claim-main - authority comes from the ticket, not the b
 		const res = await claimRequest({ claimTicket: 'ticket-1' })
 
 		expect(res.status).toBe(500)
+	})
+})
+
+describe('POST /api/auth/claim-main/cancel', () => {
+	it('invalidates the claim ticket and clears the auth cookies without an existing session', async () => {
+		const { deleteWhere } = mockDb(claimTicketRow())
+
+		const res = await cancelClaimRequest({ claimTicket: 'ticket-1' })
+
+		expect(res.status).toBe(200)
+		expect(await res.json()).toEqual({ success: true })
+		expect(deleteWhere).toHaveBeenCalledOnce()
+		expect(res.headers.get('set-cookie')).toContain('session=;')
+		expect(res.headers.get('set-cookie')).toContain('oauth_state=;')
+	})
+
+	it('revokes an existing session cookie while cancelling the new-account flow', async () => {
+		mockDb(null)
+		const revokeSession = vi.fn().mockResolvedValue(undefined)
+		vi.mocked(AuthService).mockImplementation(function () {
+			return { revokeSession } as any
+		})
+
+		const res = await cancelClaimRequest({}, { Cookie: 'session=existing-session' })
+
+		expect(res.status).toBe(200)
+		expect(revokeSession).toHaveBeenCalledWith('existing-session')
 	})
 })
 

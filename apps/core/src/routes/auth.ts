@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
 
-import { eq } from '@repo/db-utils'
+import { and, eq } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { assertEveCharacterId } from '@repo/eve-types'
 import { captureException, logger, toErrorMessage } from '@repo/hono-helpers'
@@ -1271,6 +1271,52 @@ auth.post('/logout', requireAuth(), async (c) => {
 	return c.json({
 		success: true,
 	})
+})
+
+/**
+ * POST /auth/claim-main/cancel
+ *
+ * Cancel an unclaimed new-account flow. This is intentionally available without an
+ * authenticated session because the claim-main ticket is issued before the account exists.
+ * It also revokes any existing session cookie so abandoning a new-account flow cannot leave
+ * the browser signed into a previously active account.
+ */
+auth.post('/claim-main/cancel', async (c) => {
+	const body = await c.req.json().catch(() => ({}))
+	const claimTicket =
+		typeof body === 'object' &&
+		body !== null &&
+		'claimTicket' in body &&
+		typeof body.claimTicket === 'string'
+			? body.claimTicket
+			: null
+	const db = createDb(c.env.DATABASE_URL)
+
+	if (claimTicket) {
+		await db
+			.delete(oauthStates)
+			.where(and(eq(oauthStates.state, claimTicket), eq(oauthStates.flowType, 'claim-main')))
+	}
+
+	const authHeader = c.req.header('Authorization')
+	const cookieToken = getCookie(c, 'session')
+	const sessionToken = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : cookieToken
+	const user = c.get('user')
+
+	if (sessionToken) {
+		const eveTokenStoreStub = getStub<EveTokenStore>(c.env.EVE_TOKEN_STORE, 'default')
+		const authService = new AuthService(db, eveTokenStoreStub, c.env.SESSION_SECRET)
+		await authService.revokeSession(sessionToken)
+		if (user) {
+			const activityService = new ActivityService(db)
+			await activityService.logLogout(user.id, getRequestMetadata(c))
+		}
+	}
+
+	deleteCookie(c, 'session', { path: '/' })
+	deleteCookie(c, OAUTH_STATE_COOKIE, { path: '/' })
+
+	return c.json({ success: true })
 })
 
 /**
