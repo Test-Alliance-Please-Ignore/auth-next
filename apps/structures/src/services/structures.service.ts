@@ -79,6 +79,7 @@ import {
 	structureModuleConfig,
 	structureStateEvents,
 } from '../db/schema'
+import { estimateMagmaticGasDepletionAt } from './magmatic-gas'
 
 import type { DbClient } from '@repo/db-utils'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
@@ -3872,6 +3873,7 @@ async function loadMoonDrillPageItems(
 			updatedAt: moonDrillStructures.updatedAt,
 			fuelBlockUnits: moonDrillStructures.fuelBlockUnits,
 			magmaticGasUnits: moonDrillStructures.magmaticGasUnits,
+			magmaticGasSnapshotAt: moonDrillStructures.magmaticGasSnapshotAt,
 			moonMaterialUnits: moonDrillStructures.moonMaterialUnits,
 			moonMaterialVolumeM3: moonDrillStructures.moonMaterialVolumeM3,
 			moonDrillStructureId: moonDrillStructures.moonDrillStructureId,
@@ -3905,6 +3907,10 @@ async function loadMoonDrillPageItems(
 			moonName: row.moonName ?? null,
 			fuelBlockUnits: row.fuelBlockUnits,
 			magmaticGasUnits: row.magmaticGasUnits,
+			magmaticGasEstimatedDepletionAt: estimateMagmaticGasDepletionAt(
+				row.magmaticGasUnits,
+				row.magmaticGasSnapshotAt
+			),
 			moonMaterialUnits: row.moonMaterialUnits,
 			moonMaterialVolumeM3: row.moonMaterialVolumeM3,
 			syncStatus: hasMoonDrillSnapshot
@@ -4384,8 +4390,19 @@ function buildMoonDrillStructuresCte(db: DbClient<DbSchema>, corpWhere: any, pla
 						0
 					)::float8
 				`.as('moonMaterialVolumeM3'),
+				snapshotActivatedAt: corporationStructureInventorySnapshots.activatedAt,
 			})
 			.from(corporationStructureInventory)
+			.innerJoin(
+				corporationStructureInventorySnapshots,
+				and(
+					eq(corporationStructureInventorySnapshots.id, corporationStructureInventory.snapshotId),
+					eq(
+						corporationStructureInventorySnapshots.corporationId,
+						corporationStructureInventory.corporationId
+					)
+				)
+			)
 			.innerJoin(
 				operationalStructures,
 				and(
@@ -4396,7 +4413,8 @@ function buildMoonDrillStructuresCte(db: DbClient<DbSchema>, corpWhere: any, pla
 			.where(eq(corporationStructureInventory.snapshotId, activeSnapshotId))
 			.groupBy(
 				corporationStructureInventory.corporationId,
-				corporationStructureInventory.structureId
+				corporationStructureInventory.structureId,
+				corporationStructureInventorySnapshots.activatedAt
 			)
 	)
 	const conditions = [sql`true`]
@@ -4450,6 +4468,10 @@ function buildMoonDrillStructuresCte(db: DbClient<DbSchema>, corpWhere: any, pla
 				magmaticGasUnits:
 					sql<number>`coalesce(${moonDrillInventoryAggregate.magmaticGasUnits}, 0)`.as(
 						'magmaticGasUnits'
+					),
+				magmaticGasSnapshotAt:
+					sql<Date | null>`${moonDrillInventoryAggregate.snapshotActivatedAt}`.as(
+						'magmaticGasSnapshotAt'
 					),
 				moonMaterialUnits:
 					sql<number>`coalesce(${moonDrillInventoryAggregate.moonMaterialUnits}, 0)`.as(
