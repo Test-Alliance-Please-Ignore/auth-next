@@ -58,6 +58,7 @@ export const STRUCTURE_MOON_STRUCTURE_LIST_SORT_FIELDS = [
 ] as const satisfies readonly StructureMoonStructureListSortBy[]
 
 export const FUEL_BLOCK_TYPE_IDS = new Set(['4051', '4246', '4247', '4312'])
+export const METENOX_MAGMATIC_GAS_BURN_RATE_PER_HOUR = 200
 
 export type StructureSkyhookListSortBy =
 	| StructureCommonListSortBy
@@ -641,6 +642,7 @@ export interface StructureMoonDrillListItem
 	fuelAmount: number | null
 	fuelBlockUnits: number
 	magmaticGasUnits: number
+	magmaticGasEstimatedDepletionAt: string | null
 	moonMaterialUnits: number
 	moonMaterialVolumeM3: number
 	lowPower: boolean

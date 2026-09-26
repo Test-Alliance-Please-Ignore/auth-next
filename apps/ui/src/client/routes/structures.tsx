@@ -253,6 +253,7 @@ function MoonDrillResourceCell({
 	value,
 	secondaryValue,
 	secondarySuffix,
+	depletionAt,
 }: {
 	typeId: string
 	iconAlt: string
@@ -260,6 +261,7 @@ function MoonDrillResourceCell({
 	value: number | null | undefined
 	secondaryValue?: number | null | undefined
 	secondarySuffix?: string
+	depletionAt?: string | null
 }) {
 	const [failed, setFailed] = useState(false)
 
@@ -276,7 +278,12 @@ function MoonDrillResourceCell({
 					onError={() => setFailed(true)}
 				/>
 			)}
-			<span className="tabular-nums">{formatNullableNumber(value)}</span>
+			<div className="flex flex-col">
+				<span className="tabular-nums">{formatNullableNumber(value)}</span>
+				{depletionAt && (
+					<DurationDisplay endDate={depletionAt} maxUnits={2} durationStyle="compact" />
+				)}
+			</div>
 			{secondaryValue !== undefined && (
 				<span className="text-muted-foreground">
 					({formatNullableDecimal(secondaryValue)} {secondarySuffix ?? ''})
@@ -1002,15 +1009,6 @@ export default function StructuresPage() {
 
 	const renderStructureRows = (items: StructureListItem[]) =>
 		items.map((structure) => {
-			const fuelLabel = structure.fuelExpires ? (
-				<DurationDisplay endDate={structure.fuelExpires} maxUnits={3} durationStyle="compact" />
-			) : structure.fuelAmount != null ? (
-				i18n.t('structures.fuelUnits', {
-					value1: structure.fuelAmount.toLocaleString(getActiveLocale()),
-				})
-			) : (
-				'-'
-			)
 			const groupLabel = structure.assignedGroupId
 				? (groupNameById.get(structure.assignedGroupId) ?? structure.assignedGroupId)
 				: '-'
@@ -1044,7 +1042,6 @@ export default function StructuresPage() {
 						</div>
 					</TableCell>
 					<TableCell>{structure.typeName ?? structure.typeId}</TableCell>
-					<TableCell>{fuelLabel}</TableCell>
 					<TableCell>
 						<Badge variant={structure.lowPower ? 'warning' : 'ghost'}>
 							{structure.lowPower ? t('structures.yes') : t('structures.no')}
@@ -1324,15 +1321,6 @@ export default function StructuresPage() {
 		items.map((structure) => {
 			const displayMoonName = stripLeadingContextName(structure.moonName, structure.planetName)
 			const displayStructureName = stripLeadingContextName(structure.name, structure.systemName)
-			const fuelLabel = structure.fuelExpires ? (
-				<DurationDisplay endDate={structure.fuelExpires} maxUnits={3} durationStyle="compact" />
-			) : structure.fuelAmount != null ? (
-				i18n.t('structures.fuelUnits', {
-					value1: structure.fuelAmount.toLocaleString(getActiveLocale()),
-				})
-			) : (
-				'-'
-			)
 			const groupLabel = structure.assignedGroupId
 				? (groupNameById.get(structure.assignedGroupId) ?? structure.assignedGroupId)
 				: '-'
@@ -1364,7 +1352,6 @@ export default function StructuresPage() {
 							</span>
 						</div>
 					</TableCell>
-					<TableCell>{fuelLabel}</TableCell>
 					<TableCell>
 						<MoonDrillResourceCell
 							typeId={STATION_VAULT_ICON_TYPE_ID}
@@ -1381,6 +1368,7 @@ export default function StructuresPage() {
 							iconAlt={t('structures.fuelBlock')}
 							fallbackIcon={Package}
 							value={structure.fuelBlockUnits}
+							depletionAt={structure.fuelExpires}
 						/>
 					</TableCell>
 					<TableCell>
@@ -1389,6 +1377,7 @@ export default function StructuresPage() {
 							iconAlt={t('structures.magmaticGas2')}
 							fallbackIcon={Flame}
 							value={structure.magmaticGasUnits}
+							depletionAt={structure.magmaticGasEstimatedDepletionAt}
 						/>
 					</TableCell>
 					<TableCell>
@@ -2201,7 +2190,6 @@ export default function StructuresPage() {
 													<TableHead>{t('structures.moon')}</TableHead>
 													<SortableHead field="name" label={t('structures.name')} />
 													<SortableHead field="corporation" label={t('structures.corporation')} />
-													<SortableHead field="fuel" label={t('structures.fuel')} />
 													<SortableHead field="moonMaterials" label={t('structures.moonGoo')} />
 													<SortableHead field="fuelBlocks" label={t('structures.fuelBlocks')} />
 													<SortableHead field="magmaticGas" label={t('structures.magmaticGas')} />

@@ -40,6 +40,7 @@
 		"@repo/structures": "workspace:*",
 		"@repo/structures-db-schema": "workspace:*",
 		"@repo/universe": "workspace:*",
+		"@repo/worker-utils": "workspace:*",
 		"drizzle-orm": "0.45.2",
 		"hono": "4.12.27",
 		"workers-tagged-logger": "0.13.7",
