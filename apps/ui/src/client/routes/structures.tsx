@@ -1009,6 +1009,15 @@ export default function StructuresPage() {
 
 	const renderStructureRows = (items: StructureListItem[]) =>
 		items.map((structure) => {
+			const fuelLabel = structure.fuelExpires ? (
+				<DurationDisplay endDate={structure.fuelExpires} maxUnits={3} durationStyle="compact" />
+			) : structure.fuelAmount != null ? (
+				i18n.t('structures.fuelUnits', {
+					value1: structure.fuelAmount.toLocaleString(getActiveLocale()),
+				})
+			) : (
+				'-'
+			)
 			const groupLabel = structure.assignedGroupId
 				? (groupNameById.get(structure.assignedGroupId) ?? structure.assignedGroupId)
 				: '-'
@@ -1042,6 +1051,7 @@ export default function StructuresPage() {
 						</div>
 					</TableCell>
 					<TableCell>{structure.typeName ?? structure.typeId}</TableCell>
+					<TableCell>{fuelLabel}</TableCell>
 					<TableCell>
 						<Badge variant={structure.lowPower ? 'warning' : 'ghost'}>
 							{structure.lowPower ? t('structures.yes') : t('structures.no')}
