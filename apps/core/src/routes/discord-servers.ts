@@ -1514,27 +1514,24 @@ app.post('/:id/resync-commands', requireAuth(), requireAdmin(), async (c) => {
 			)
 		)
 		const registeredByName = new Map(registered.map((command) => [command.name, command.id]))
-		const results = await db.transaction(async (tx) => {
-			const now = new Date()
-			const rows = []
-			for (const attachment of attachments) {
-				const discordCommandId = attachment.command.isActive
-					? (registeredByName.get(attachment.command.name) ?? null)
-					: null
-				await tx
-					.update(discordServerCommands)
-					.set({ discordCommandId, updatedAt: now })
-					.where(eq(discordServerCommands.id, attachment.id))
-				rows.push({
-					attachmentId: attachment.id,
-					commandId: attachment.commandId,
-					commandName: attachment.command.name,
-					success: attachment.command.isActive ? discordCommandId !== null : true,
-					discordCommandId: discordCommandId ?? undefined,
-				})
-			}
-			return rows
-		})
+		const now = new Date()
+		const results = []
+		for (const attachment of attachments) {
+			const discordCommandId = attachment.command.isActive
+				? (registeredByName.get(attachment.command.name) ?? null)
+				: null
+			await db
+				.update(discordServerCommands)
+				.set({ discordCommandId, updatedAt: now })
+				.where(eq(discordServerCommands.id, attachment.id))
+			results.push({
+				attachmentId: attachment.id,
+				commandId: attachment.commandId,
+				commandName: attachment.command.name,
+				success: attachment.command.isActive ? discordCommandId !== null : true,
+				discordCommandId: discordCommandId ?? undefined,
+			})
+		}
 		return c.json({
 			success: results.every((result) => result.success),
 			total: results.length,
