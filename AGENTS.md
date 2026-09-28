@@ -444,7 +444,8 @@ const itemsWithTags = await this.db.query.items.findMany({
 })
 ```
 
-**Transactions:**
+**Transactions (Durable Objects SQLite only):**
+Neon HTTP database clients do not support this API; see the Neon restrictions below.
 ```typescript
 await this.db.transaction(async (tx) => {
   await tx.insert(items).values(newItem)
@@ -734,6 +735,16 @@ Each worker app that uses a database:
 2. Uses `@repo/db-utils` for client creation and migrations
 3. Stores migrations in app-specific directories
 4. Uses Neon serverless PostgreSQL via `@neondatabase/serverless`
+
+### Neon HTTP Database Restrictions
+**CRITICAL:** The Neon HTTP driver does not support transactions. Never call
+Drizzle `.transaction()` on a database client backed by Neon HTTP; perform
+independent writes or use a supported batching pattern instead.
+
+**CRITICAL:** Never use the Neon connection-pool WebSocket driver in Cloudflare
+Workers. Use the repository's Neon HTTP database utilities and connection
+configuration instead. WebSocket-based pooling is not supported in the Workers
+runtime and can fail at runtime or leak resources.
 
 **IMPORTANT: BigInt Handling**
 - **Avoid using `bigint` column types unless absolutely necessary**
