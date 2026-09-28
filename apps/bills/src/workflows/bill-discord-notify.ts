@@ -48,6 +48,7 @@ function buildMessage(input: {
 	billId: string
 	title: string
 	amount: string
+	paymentToken: string
 	payeeName: string
 	dueDate: Date
 	eventType: 'issued' | 'due_24h' | 'overdue' | 'paid'
@@ -56,6 +57,15 @@ function buildMessage(input: {
 	const alertText = toAlertText(input.eventType)
 	const dueLong = formatDiscordLongTimestamp(input.dueDate)
 	const amount = `**${formatISK(input.amount, { showDecimals: false })}**`
+	const fields = [
+		{ name: 'Bill', value: input.title, inline: true },
+		{ name: 'Amount', value: amount, inline: true },
+		{ name: 'Payee', value: input.payeeName, inline: true },
+		{ name: 'Due', value: dueLong, inline: false },
+	]
+	if (input.eventType === 'issued') {
+		fields.push({ name: 'Payment Token', value: `\`${input.paymentToken}\``, inline: true })
+	}
 	return {
 		content: '',
 		allowEveryone: false,
@@ -64,12 +74,7 @@ function buildMessage(input: {
 				title,
 				color,
 				description: `${alertText}\n[View Bill](https://pleaseignore.app/my-bills/${input.billId})`,
-				fields: [
-					{ name: 'Bill', value: input.title, inline: true },
-					{ name: 'Amount', value: amount, inline: true },
-					{ name: 'Payee', value: input.payeeName, inline: true },
-					{ name: 'Due', value: dueLong, inline: false },
-				],
+				fields,
 				footer: { text: `Bill ID: ${input.billId}` },
 				timestamp: new Date().toISOString(),
 			},
@@ -197,6 +202,7 @@ export class BillDiscordNotifyWorkflow extends WorkflowEntrypoint<
 					billId: bill.id,
 					title: bill.title,
 					amount: bill.amount,
+					paymentToken: bill.paymentToken,
 					payeeName,
 					dueDate: bill.dueDate,
 					eventType: eventRow.eventType,

@@ -14,9 +14,25 @@ export type CacheScopeContext = {
 }
 
 const DEFAULT_GLOBAL_CACHE_TTL_SECONDS = 5 * 60
+const MIN_GLOBAL_CACHE_TTL_SECONDS = 60
 
 /** Maximum cache age: 12 hours (in milliseconds) - applies retroactively to all cached data */
 const MAX_CACHE_AGE_MS = 12 * 60 * 60 * 1000
+
+export function calculateGlobalCacheTtlSeconds(
+	expiresAt: Date | null,
+	nowMs = Date.now()
+): number | null {
+	if (!expiresAt) {
+		return DEFAULT_GLOBAL_CACHE_TTL_SECONDS
+	}
+
+	const ttlMs = expiresAt.getTime() - nowMs
+	if (ttlMs <= 0) {
+		return null
+	}
+	return Math.max(MIN_GLOBAL_CACHE_TTL_SECONDS, Math.floor(ttlMs / 1000))
+}
 
 type SerializedCacheEntry<T> = {
 	data: T
@@ -145,14 +161,7 @@ export class EsiCache {
 	}
 
 	private calculateGlobalTtlSeconds(expiresAt: Date | null): number | null {
-		if (!expiresAt) {
-			return DEFAULT_GLOBAL_CACHE_TTL_SECONDS
-		}
-		const ttlMs = expiresAt.getTime() - Date.now()
-		if (ttlMs <= 0) {
-			return null
-		}
-		return Math.max(1, Math.floor(ttlMs / 1000))
+		return calculateGlobalCacheTtlSeconds(expiresAt)
 	}
 
 	async getCachedResponse<T>(

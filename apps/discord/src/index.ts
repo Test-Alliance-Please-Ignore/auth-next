@@ -33,6 +33,18 @@ const DISCORD_EPHEMERAL_FLAG = 1 << 6
 const DISCORD_REPLAY_WINDOW_SECONDS = 5 * 60
 const DISCORD_ROUTING_CACHE_TTL_MS = 60_000
 
+// TEMPORARY: remove this diagnostic switch and its log events after the Discord
+// interaction reliability investigation is complete. Keep payloads and tokens out
+// of these logs because interaction logs are retained outside the request context.
+function logInteractionDiagnostic(
+	env: App['Bindings'],
+	event: string,
+	fields: Record<string, unknown>
+): void {
+	if (env.DISCORD_INTERACTION_DIAGNOSTICS !== 'true') return
+	logger.warn(`[DiscordInteractions][Diagnostic] ${event}`, fields)
+}
+
 interface DiscordInteractionPayload {
 	id: string
 	type: number
@@ -130,6 +142,11 @@ async function runDeferredCommand(
 	ctx: DeferredCommandContext
 ): Promise<void> {
 	const startedAt = Date.now()
+	// TEMPORARY: remove with logInteractionDiagnostic after the interaction investigation.
+	logInteractionDiagnostic(env, 'deferred_command_started', {
+		interactionId: ctx.interactionId,
+		commandName: ctx.commandName,
+	})
 	try {
 		const execution = await env.CORE.executeDiscordSlashCommand({
 			commandName: ctx.commandName,
@@ -158,8 +175,22 @@ async function runDeferredCommand(
 				durationMs: Date.now() - startedAt,
 			})
 		}
+		// TEMPORARY: remove with logInteractionDiagnostic after the interaction investigation.
+		logInteractionDiagnostic(env, 'deferred_command_completed', {
+			interactionId: ctx.interactionId,
+			commandName: ctx.commandName,
+			deliverySucceeded: result.success,
+			durationMs: Date.now() - startedAt,
+		})
 	} catch (error) {
 		logger.error('[DiscordInteractions] Deferred command execution failed', {
+			interactionId: ctx.interactionId,
+			commandName: ctx.commandName,
+			error: error instanceof Error ? error.message : String(error),
+			durationMs: Date.now() - startedAt,
+		})
+		// TEMPORARY: remove with logInteractionDiagnostic after the interaction investigation.
+		logInteractionDiagnostic(env, 'deferred_command_failed', {
 			interactionId: ctx.interactionId,
 			commandName: ctx.commandName,
 			error: error instanceof Error ? error.message : String(error),
@@ -454,6 +485,17 @@ const app = new Hono<App>()
 			return c.json({ error: 'Invalid interaction payload' }, 400)
 		}
 
+		// TEMPORARY: remove with logInteractionDiagnostic after the interaction investigation.
+		logInteractionDiagnostic(c.env, 'received', {
+			requestId,
+			interactionId: interaction.id,
+			interactionType: interaction.type,
+			commandName: interaction.data?.name ?? null,
+			customId: interaction.data?.custom_id ?? null,
+			guildId: interaction.guild_id ?? null,
+			channelId: interaction.channel_id ?? null,
+		})
+
 		if (interaction.type === DISCORD_INTERACTION_PING) {
 			logger.info('[DiscordInteractions] Ping interaction', {
 				requestId,
@@ -723,6 +765,14 @@ const app = new Hono<App>()
 				commandName,
 				deferralMode,
 			})
+			// TEMPORARY: remove with logInteractionDiagnostic after the interaction investigation.
+			logInteractionDiagnostic(c.env, 'acknowledged_deferred', {
+				requestId,
+				interactionId: interaction.id,
+				commandName,
+				deferralMode,
+				durationMs: Date.now() - startedAt,
+			})
 			c.executionCtx.waitUntil(
 				runDeferredCommand(c.env, {
 					interactionId: interaction.id,
@@ -759,6 +809,16 @@ const app = new Hono<App>()
 				discordUserId,
 				guildId,
 				coreUserId: execution.coreUserId,
+				authorized: execution.authorized,
+				reason: execution.reason,
+				durationMs: Date.now() - startedAt,
+			})
+			// TEMPORARY: remove with logInteractionDiagnostic after the interaction investigation.
+			logInteractionDiagnostic(c.env, 'completed_sync', {
+				requestId,
+				interactionId: interaction.id,
+				commandName,
+				ok: execution.ok,
 				authorized: execution.authorized,
 				reason: execution.reason,
 				durationMs: Date.now() - startedAt,

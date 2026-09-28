@@ -2,6 +2,8 @@ import type { DiscordRateLimitRecord, DiscordRateLimitStore } from '@repo/discor
 
 type KvDiscordRateLimitRecord = DiscordRateLimitRecord
 
+const MIN_KV_EXPIRATION_TTL_SECONDS = 60
+
 function serializeRecord(record: KvDiscordRateLimitRecord): string {
 	return JSON.stringify(record)
 }
@@ -31,9 +33,7 @@ function ttlSecondsFromExpiresAt(expiresAt: number): number {
 	return Math.max(1, Math.ceil((expiresAt - Date.now()) / 1000))
 }
 
-export function createDiscordRateLimitKvStore(
-	kv: KVNamespace
-): DiscordRateLimitStore {
+export function createDiscordRateLimitKvStore(kv: KVNamespace): DiscordRateLimitStore {
 	return {
 		async get(key: string): Promise<KvDiscordRateLimitRecord | null> {
 			const record = parseRecord(await kv.get(key))
@@ -48,13 +48,12 @@ export function createDiscordRateLimitKvStore(
 
 			return record
 		},
-		async put(
-			key: string,
-			value: KvDiscordRateLimitRecord,
-			ttlSeconds: number
-		): Promise<void> {
+		async put(key: string, value: KvDiscordRateLimitRecord, ttlSeconds: number): Promise<void> {
 			await kv.put(key, serializeRecord(value), {
-				expirationTtl: Math.max(1, ttlSeconds ?? ttlSecondsFromExpiresAt(value.expiresAt)),
+				expirationTtl: Math.max(
+					MIN_KV_EXPIRATION_TTL_SECONDS,
+					ttlSeconds ?? ttlSecondsFromExpiresAt(value.expiresAt)
+				),
 			})
 		},
 		async delete(key: string): Promise<void> {
