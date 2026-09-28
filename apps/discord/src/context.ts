@@ -47,6 +47,9 @@ export type Env = SharedHonoEnv & {
 	// Role management configuration
 	DISCORD_ROLE_ADD_ONLY_MODE: string
 
+	// Temporary warn-level diagnostics for Discord interactions
+	DISCORD_INTERACTION_DIAGNOSTICS: string
+
 	// Core worker service binding for slash command execution
 	CORE: Fetcher & {
 		executeDiscordSlashCommand(input: {
