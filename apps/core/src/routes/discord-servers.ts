@@ -23,8 +23,7 @@ import {
 import { requireAdmin, requireAuth } from '../middleware/session'
 import {
 	buildDiscordSlashCommandDefinition,
-	deleteGuildSlashCommand,
-	upsertGuildSlashCommand,
+	replaceGuildSlashCommands,
 } from '../services/discord-commands.service'
 import { parseDiscordDurationSeconds } from '../services/discord-duration'
 import * as discordService from '../services/discord.service'
@@ -1483,10 +1482,7 @@ app.post('/:id/audit/kick-users', requireAuth(), requireAdmin(), async (c) => {
 	}
 })
 
-/**
- * POST /discord-servers/:id/resync-commands
- * Re-registers all commands attached to this server against Discord API and updates stored command IDs.
- */
+/** Re-sync all attached slash commands using one bulk guild overwrite request. */
 app.post('/:id/resync-commands', requireAuth(), requireAdmin(), async (c) => {
 	const serverId = c.req.param('id')
 	const db = c.get('db')
@@ -1499,95 +1495,46 @@ app.post('/:id/resync-commands', requireAuth(), requireAdmin(), async (c) => {
 		const server = await db.query.discordServers.findFirst({
 			where: eq(discordServers.id, serverId),
 		})
-		if (!server) {
-			return c.json({ error: 'Discord server not found' }, 404)
-		}
+		if (!server) return c.json({ error: 'Discord server not found' }, 404)
 
 		const attachments = await db.query.discordServerCommands.findMany({
 			where: eq(discordServerCommands.discordServerId, serverId),
-			with: {
-				command: true,
-			},
-			orderBy: [desc(discordServerCommands.updatedAt)],
+			with: { command: true },
 		})
-
-		const results: Array<{
-			attachmentId: string
-			commandId: string
-			commandName: string
-			success: boolean
-			discordCommandId?: string
-			error?: string
-		}> = []
-
-		for (const attachment of attachments) {
-			try {
-				if (!attachment.command.isActive) {
-					const deleted = await deleteGuildSlashCommand(c.env, server.guildId, {
-						commandId: attachment.discordCommandId ?? undefined,
-						commandName: attachment.command.name,
-					})
-					if (!deleted.success) {
-						throw new Error(deleted.error ?? 'Failed to delete inactive command')
-					}
-					await db
-						.update(discordServerCommands)
-						.set({ discordCommandId: null, updatedAt: new Date() })
-						.where(eq(discordServerCommands.id, attachment.id))
-					results.push({
-						attachmentId: attachment.id,
-						commandId: attachment.commandId,
-						commandName: attachment.command.name,
-						success: true,
-					})
-					continue
-				}
-				const registered = await upsertGuildSlashCommand(
-					c.env,
-					server.guildId,
-					buildDiscordSlashCommandDefinition({
-						name: attachment.command.name,
-						description: attachment.command.description,
-						commandType: attachment.command.commandType,
-					})
-				)
-
-				await db
-					.update(discordServerCommands)
-					.set({
-						discordCommandId: registered.id,
-						updatedAt: new Date(),
-					})
-					.where(eq(discordServerCommands.id, attachment.id))
-
-				if (
-					attachment.discordCommandId &&
-					attachment.discordCommandId.length > 0 &&
-					attachment.discordCommandId !== registered.id
-				) {
-					await deleteGuildSlashCommand(c.env, server.guildId, {
-						commandId: attachment.discordCommandId,
-					})
-				}
-
-				results.push({
-					attachmentId: attachment.id,
-					commandId: attachment.commandId,
-					commandName: attachment.command.name,
-					success: true,
-					discordCommandId: registered.id,
+		const activeAttachments = attachments.filter((attachment) => attachment.command.isActive)
+		const registered = await replaceGuildSlashCommands(
+			c.env,
+			server.guildId,
+			activeAttachments.map((attachment) =>
+				buildDiscordSlashCommandDefinition({
+					name: attachment.command.name,
+					description: attachment.command.description,
+					commandType: attachment.command.commandType,
 				})
-			} catch (error) {
-				results.push({
+			)
+		)
+		const registeredByName = new Map(registered.map((command) => [command.name, command.id]))
+		const results = await db.transaction(async (tx) => {
+			const now = new Date()
+			const rows = []
+			for (const attachment of attachments) {
+				const discordCommandId = attachment.command.isActive
+					? (registeredByName.get(attachment.command.name) ?? null)
+					: null
+				await tx
+					.update(discordServerCommands)
+					.set({ discordCommandId, updatedAt: now })
+					.where(eq(discordServerCommands.id, attachment.id))
+				rows.push({
 					attachmentId: attachment.id,
 					commandId: attachment.commandId,
 					commandName: attachment.command.name,
-					success: false,
-					error: error instanceof Error ? error.message : 'Failed to sync command',
+					success: attachment.command.isActive ? discordCommandId !== null : true,
+					discordCommandId: discordCommandId ?? undefined,
 				})
 			}
-		}
-
+			return rows
+		})
 		return c.json({
 			success: results.every((result) => result.success),
 			total: results.length,
@@ -1596,7 +1543,10 @@ app.post('/:id/resync-commands', requireAuth(), requireAdmin(), async (c) => {
 			results,
 		})
 	} catch (error) {
-		logger.error('Error resyncing Discord server commands:', error)
+		logger.error('[Discord] Error resyncing Discord server commands', {
+			serverId,
+			error: error instanceof Error ? error.message : String(error),
+		})
 		return c.json({ error: 'Failed to resync Discord commands for server' }, 500)
 	}
 })

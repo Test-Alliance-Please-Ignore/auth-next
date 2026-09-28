@@ -793,6 +793,15 @@ export async function upsertGuildSlashCommand(
 	return discordStub.upsertGuildSlashCommand(guildId, command)
 }
 
+export async function replaceGuildSlashCommands(
+	env: Pick<Env, 'DISCORD'>,
+	guildId: string,
+	commands: DiscordSlashCommandDefinition[]
+): Promise<Array<{ id: string; name: string; description: string }>> {
+	const discordStub = getStub<Discord>(env.DISCORD, 'default')
+	return discordStub.replaceGuildSlashCommands(guildId, commands)
+}
+
 export async function deleteGuildSlashCommand(
 	env: Pick<Env, 'DISCORD'>,
 	guildId: string,

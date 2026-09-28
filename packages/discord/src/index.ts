@@ -783,6 +783,15 @@ export interface Discord {
 	): Promise<DiscordRegisteredSlashCommand>
 
 	/**
+	 * Replace all guild slash commands in one Discord API request.
+	 * Commands omitted from the payload are removed by Discord.
+	 */
+	replaceGuildSlashCommands(
+		guildId: string,
+		commands: DiscordSlashCommandDefinition[]
+	): Promise<DiscordRegisteredSlashCommand[]>
+
+	/**
 	 * Delete a guild slash command by ID or name.
 	 * @param guildId - Discord guild ID
 	 * @param opts - Command identifier

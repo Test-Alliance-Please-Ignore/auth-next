@@ -15,11 +15,15 @@ import {
 import { Label } from '@/components/ui/label'
 import { LoadingSpinner } from '@/components/ui/loading'
 import { Select } from '@/components/ui/select'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import {
-	useDiscordServers,
-	useResyncDiscordServerCommands,
-} from '@/hooks/useDiscord'
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from '@/components/ui/table'
+import { useDiscordServers, useResyncDiscordServerCommands } from '@/hooks/useDiscord'
 import {
 	useAttachDiscordCommandToServer,
 	useDetachDiscordCommandFromServer,
