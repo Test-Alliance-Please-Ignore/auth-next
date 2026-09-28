@@ -22,13 +22,21 @@ murmur-control over its REST API.
 - Passwords are generated inside the DO, converted to PBKDF2-SHA256 verifier
   material (`src/hazmat.ts`), and returned exactly once — never stored.
 
+## Profile refreshes
+
+Corporation changes update the account display name through `syncAccountProfiles`.
+Registered users remain eligible while reconciliation is queued, including when
+an immediately preceding group sync queued it. New accounts awaiting their first
+registration and absent users are skipped. The updated corporation tag appears
+on the next Mumble login; existing sessions are not disconnected.
+
 ## Configuration
 
-| Name | Kind | Purpose |
-| --- | --- | --- |
-| `MURMUR_CONTROL_API_URL` | secret | Base URL of the murmur-control API |
-| `MURMUR_CONTROL_MTLS` | mTLS binding | Optional outbound client certificate for murmur-control |
-| `MURMUR_CONTROL_TOKEN` | secret | Optional bearer token for murmur-control |
+| Name                     | Kind         | Purpose                                                 |
+| ------------------------ | ------------ | ------------------------------------------------------- |
+| `MURMUR_CONTROL_API_URL` | secret       | Base URL of the murmur-control API                      |
+| `MURMUR_CONTROL_MTLS`    | mTLS binding | Optional outbound client certificate for murmur-control |
+| `MURMUR_CONTROL_TOKEN`   | secret       | Optional bearer token for murmur-control                |
 
 ```bash
 pnpm -F mumble wrangler secret put MURMUR_CONTROL_API_URL
@@ -43,6 +51,7 @@ The bearer token is optional in either mode and is only attached when
 `MURMUR_CONTROL_TOKEN` is present in the environment.
 
 In production-like environments, the client requires:
+
 - an `https://` murmur-control base URL
 - at least one auth mechanism: mTLS binding or bearer token
 
