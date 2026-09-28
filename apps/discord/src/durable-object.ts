@@ -1873,6 +1873,63 @@ export class DiscordDO extends DurableObject<Env> implements Discord {
 	}
 
 	/**
+	 * Replace the complete guild command set using Discord's bulk-overwrite endpoint.
+	 */
+	async replaceGuildSlashCommands(
+		guildId: string,
+		commands: DiscordSlashCommandDefinition[]
+	): Promise<DiscordRegisteredSlashCommand[]> {
+		const applicationId = this.env.DISCORD_CLIENT_ID?.trim()
+		if (!applicationId) {
+			throw new Error('DISCORD_CLIENT_ID is not configured')
+		}
+
+		const client = this.createDiscordClient()
+		const baseRoute = `/applications/${applicationId}/guilds/${guildId}/commands`
+		const existing =
+			await client.get<Array<{ id: string; name: string; description: string; type?: number }>>(
+				baseRoute
+			)
+		const existingByName = new Map(
+			existing
+				.filter((command) => (command.type ?? 1) === 1)
+				.map((command) => [command.name.trim().toLowerCase(), command])
+		)
+
+		const payload = commands.map((command) => {
+			const normalizedName = command.name.trim().toLowerCase()
+			if (!/^[a-z0-9_-]{1,32}$/.test(normalizedName)) {
+				throw new Error('Invalid command name; expected ^[a-z0-9_-]{1,32}$')
+			}
+			const description = command.description.trim()
+			if (!description || description.length > 100) {
+				throw new Error('Invalid command description; expected 1-100 characters')
+			}
+			return {
+				...(existingByName.get(normalizedName)?.id
+					? { id: existingByName.get(normalizedName)!.id }
+					: {}),
+				name: normalizedName,
+				description,
+				type: 1,
+				...(command.options && command.options.length > 0 ? { options: command.options } : {}),
+			}
+		})
+
+		const retainedNonSlashCommands = existing.filter((command) => (command.type ?? 1) !== 1)
+		const registered = await client.put<
+			Array<{ id: string; name: string; description: string; type?: number }>
+		>(baseRoute, [...retainedNonSlashCommands, ...payload])
+		return registered
+			.filter((command) => (command.type ?? 1) === 1)
+			.map((command) => ({
+				id: command.id,
+				name: command.name,
+				description: command.description,
+			}))
+	}
+
+	/**
 	 * Delete a guild slash command by ID or name.
 	 */
 	async deleteGuildSlashCommand(
