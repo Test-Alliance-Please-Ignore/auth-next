@@ -8,6 +8,12 @@ export const broadcastComposerCatalog = defineCatalog(
 		editDescription: 'Update this draft before sending',
 		configure: 'Configure your broadcast message',
 		loadingDraft: 'Loading draft…',
+		shortcutLoading: 'Loading the selected template and target…',
+		shortcutInvalid:
+			'This template link is incomplete or the template and target are no longer available together. Choose an available template and target.',
+		shortcutFailed:
+			'Unable to check this template link. Try again or choose a template and target.',
+		shortcutChoose: 'Choose template and target',
 		draftLoadFailed: 'Failed to load draft.',
 		draftMissing: 'Draft not found.',
 		onlyDraft: 'Only draft broadcasts can be edited.',
@@ -99,6 +105,12 @@ export const broadcastComposerCatalog = defineCatalog(
 		editDescription: 'Bearbeite diesen Entwurf vor dem Senden',
 		configure: 'Gestalte deine Broadcast-Nachricht',
 		loadingDraft: 'Entwurf wird geladen…',
+		shortcutLoading: 'Ausgewählte Vorlage und Ziel werden geladen…',
+		shortcutInvalid:
+			'Dieser Vorlagenlink ist unvollständig oder Vorlage und Ziel sind nicht mehr zusammen verfügbar. Wähle eine verfügbare Vorlage und ein Ziel.',
+		shortcutFailed:
+			'Dieser Vorlagenlink konnte nicht überprüft werden. Versuche es erneut oder wähle eine Vorlage und ein Ziel.',
+		shortcutChoose: 'Vorlage und Ziel auswählen',
 		draftLoadFailed: 'Entwurf konnte nicht geladen werden.',
 		draftMissing: 'Entwurf nicht gefunden.',
 		onlyDraft: 'Nur Broadcast-Entwürfe können bearbeitet werden.',
@@ -191,6 +203,12 @@ export const broadcastComposerCatalog = defineCatalog(
 		editDescription: '전송하기 전에 초안을 수정하세요',
 		configure: '방송 메시지를 작성하세요',
 		loadingDraft: '초안 불러오는 중…',
+		shortcutLoading: '선택한 템플릿과 대상을 불러오는 중…',
+		shortcutInvalid:
+			'템플릿 링크가 불완전하거나 이 템플릿과 대상을 함께 사용할 수 없습니다. 사용 가능한 템플릿과 대상을 선택하세요.',
+		shortcutFailed:
+			'템플릿 링크를 확인하지 못했습니다. 다시 시도하거나 템플릿과 대상을 선택하세요.',
+		shortcutChoose: '템플릿 및 대상 선택',
 		draftLoadFailed: '초안을 불러오지 못했습니다.',
 		draftMissing: '초안을 찾을 수 없습니다.',
 		onlyDraft: '초안 상태의 방송만 편집할 수 있습니다.',
@@ -282,6 +300,12 @@ export const broadcastComposerCatalog = defineCatalog(
 		editDescription: 'Actualiza este borrador antes de enviarlo',
 		configure: 'Configura tu anuncio',
 		loadingDraft: 'Cargando borrador…',
+		shortcutLoading: 'Cargando la plantilla y el destino seleccionados…',
+		shortcutInvalid:
+			'Este enlace está incompleto o la plantilla y el destino ya no están disponibles juntos. Elige una plantilla y un destino disponibles.',
+		shortcutFailed:
+			'No se pudo verificar este enlace de plantilla. Reintenta o elige una plantilla y un destino.',
+		shortcutChoose: 'Elegir plantilla y destino',
 		draftLoadFailed: 'No se pudo cargar el borrador.',
 		draftMissing: 'Borrador no encontrado.',
 		onlyDraft: 'Solo se pueden editar anuncios en borrador.',

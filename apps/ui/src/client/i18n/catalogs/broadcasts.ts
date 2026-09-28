@@ -5,6 +5,48 @@ export const broadcastsCatalog = defineCatalog(
 	{
 		broadcasts: {
 			composer: broadcastComposerCatalog.en,
+			personal: {
+				editLabel: 'Edit personal template {{name}}',
+				editTitle: 'Edit personal template',
+				editDescription:
+					'Change the name, target, and saved message values for this personal template.',
+				sendLabel: 'Send {{name}} to {{target}} now',
+				incomplete:
+					'This template is missing required message fields. Use template to complete them before sending.',
+				save: 'Save',
+				help: 'Save up to {{max}} personal templates with a target and reusable message fields.',
+				saveNew: 'Save personal template',
+				update: 'Update personal template',
+				name: 'Name',
+				saveDescription:
+					'Only you can see this template. Using it fills a new broadcast with your saved values.',
+				limit:
+					'You have reached the limit of {{max}} personal templates. Update or delete one to make room.',
+				saveFailed: 'Could not save your personal template. Please try again.',
+				loadFailed: 'Could not load your personal templates.',
+				loading: 'Loading personal template…',
+				missing: 'This personal template is unavailable or belongs to another user.',
+				count: '{{count}} of {{max}} personal templates',
+				new: 'New personal template',
+				empty:
+					'No personal templates yet. Open the composer and choose “Save personal template” to create one.',
+				unavailable: 'Template or target unavailable',
+				targetUnavailable: 'Target unavailable',
+				deleteLabel: 'Delete personal template {{name}}',
+				deleteTitle: 'Delete personal template',
+				deleteDescription: 'Delete “{{name}}”? Existing broadcasts will be kept.',
+				deleteFailed: 'Could not delete your personal template. Please try again.',
+			},
+			templates: {
+				title: 'My Templates',
+				description: 'Description',
+				use: 'Use template',
+				useLabel: 'Use {{template}} for {{target}}',
+				loading: 'Loading templates…',
+				loadFailed: 'Unable to load available templates and targets.',
+				retry: 'Try again',
+				empty: 'No templates are available for your broadcast targets.',
+			},
 			title: 'My Broadcasts',
 			refresh: 'Refresh',
 			description: 'View and manage your broadcasts',
@@ -110,6 +152,49 @@ export const broadcastsCatalog = defineCatalog(
 	{
 		broadcasts: {
 			composer: broadcastComposerCatalog.de,
+			personal: {
+				editLabel: 'Persönliche Vorlage {{name}} bearbeiten',
+				editTitle: 'Persönliche Vorlage bearbeiten',
+				editDescription:
+					'Ändere den Namen, das Ziel und die gespeicherten Nachrichtenwerte dieser persönlichen Vorlage.',
+				sendLabel: '{{name}} jetzt an {{target}} senden',
+				incomplete:
+					'In dieser Vorlage fehlen erforderliche Nachrichtenfelder. Vervollständige sie über „Vorlage verwenden“, bevor du sendest.',
+				save: 'Speichern',
+				help: 'Speichere bis zu {{max}} persönliche Vorlagen mit Ziel und wiederverwendbaren Nachrichtenfeldern.',
+				saveNew: 'Persönliche Vorlage speichern',
+				update: 'Persönliche Vorlage aktualisieren',
+				name: 'Name',
+				saveDescription:
+					'Nur du kannst diese Vorlage sehen. Sie füllt einen neuen Broadcast mit deinen gespeicherten Werten aus.',
+				limit:
+					'Du hast das Limit von {{max}} persönlichen Vorlagen erreicht. Aktualisiere oder lösche eine Vorlage.',
+				saveFailed:
+					'Deine persönliche Vorlage konnte nicht gespeichert werden. Versuche es erneut.',
+				loadFailed: 'Deine persönlichen Vorlagen konnten nicht geladen werden.',
+				loading: 'Persönliche Vorlage wird geladen…',
+				missing: 'Diese persönliche Vorlage ist nicht verfügbar oder gehört einem anderen Nutzer.',
+				count: '{{count}} von {{max}} persönlichen Vorlagen',
+				new: 'Neue persönliche Vorlage',
+				empty:
+					'Noch keine persönlichen Vorlagen. Öffne den Nachrichteneditor und wähle „Persönliche Vorlage speichern“.',
+				unavailable: 'Vorlage oder Ziel nicht verfügbar',
+				targetUnavailable: 'Ziel nicht verfügbar',
+				deleteLabel: 'Persönliche Vorlage {{name}} löschen',
+				deleteTitle: 'Persönliche Vorlage löschen',
+				deleteDescription: '„{{name}}“ löschen? Bestehende Broadcasts bleiben erhalten.',
+				deleteFailed: 'Deine persönliche Vorlage konnte nicht gelöscht werden. Versuche es erneut.',
+			},
+			templates: {
+				title: 'Meine Vorlagen',
+				description: 'Beschreibung',
+				use: 'Vorlage verwenden',
+				useLabel: '{{template}} für {{target}} verwenden',
+				loading: 'Vorlagen werden geladen…',
+				loadFailed: 'Verfügbare Vorlagen und Ziele konnten nicht geladen werden.',
+				retry: 'Erneut versuchen',
+				empty: 'Für deine Broadcast-Ziele sind keine Vorlagen verfügbar.',
+			},
 			title: 'Meine Broadcasts',
 			refresh: 'Aktualisieren',
 			description: 'Sieh dir deine Broadcasts an und verwalte sie',
@@ -218,6 +303,46 @@ export const broadcastsCatalog = defineCatalog(
 	{
 		broadcasts: {
 			composer: broadcastComposerCatalog.ko,
+			personal: {
+				editLabel: '개인 템플릿 {{name}} 편집',
+				editTitle: '개인 템플릿 편집',
+				editDescription: '이 개인 템플릿의 이름, 대상 및 저장된 메시지 값을 변경하세요.',
+				sendLabel: '{{name}}을(를) {{target}}에 지금 보내기',
+				incomplete:
+					'이 템플릿에 필수 메시지 항목이 누락되어 있습니다. 전송하기 전에 템플릿 사용을 눌러 입력하세요.',
+				save: '저장',
+				help: '대상과 재사용할 메시지 필드를 포함한 개인 템플릿을 최대 {{max}}개 저장할 수 있습니다.',
+				saveNew: '개인 템플릿 저장',
+				update: '개인 템플릿 업데이트',
+				name: '이름',
+				saveDescription:
+					'이 템플릿은 본인에게만 표시됩니다. 사용하면 저장된 값이 새 방송에 입력됩니다.',
+				limit:
+					'개인 템플릿 한도인 {{max}}개에 도달했습니다. 기존 템플릿을 업데이트하거나 삭제하세요.',
+				saveFailed: '개인 템플릿을 저장하지 못했습니다. 다시 시도하세요.',
+				loadFailed: '개인 템플릿을 불러오지 못했습니다.',
+				loading: '개인 템플릿 불러오는 중…',
+				missing: '이 개인 템플릿을 사용할 수 없거나 다른 사용자의 템플릿입니다.',
+				count: '개인 템플릿 {{count}} / {{max}}개',
+				new: '새 개인 템플릿',
+				empty: '아직 개인 템플릿이 없습니다. 방송 작성 화면에서 ‘개인 템플릿 저장’을 선택하세요.',
+				unavailable: '템플릿 또는 대상을 사용할 수 없음',
+				targetUnavailable: '대상을 사용할 수 없음',
+				deleteLabel: '개인 템플릿 {{name}} 삭제',
+				deleteTitle: '개인 템플릿 삭제',
+				deleteDescription: '‘{{name}}’ 템플릿을 삭제할까요? 기존 방송은 유지됩니다.',
+				deleteFailed: '개인 템플릿을 삭제하지 못했습니다. 다시 시도하세요.',
+			},
+			templates: {
+				title: '내 템플릿',
+				description: '설명',
+				use: '템플릿 사용',
+				useLabel: '{{target}}에 {{template}} 사용',
+				loading: '템플릿 불러오는 중…',
+				loadFailed: '사용 가능한 템플릿과 대상을 불러오지 못했습니다.',
+				retry: '다시 시도',
+				empty: '방송 대상에 사용할 수 있는 템플릿이 없습니다.',
+			},
 			title: '내 방송',
 			refresh: '새로고침',
 			description: '내 방송을 확인하고 관리하세요',
@@ -321,6 +446,48 @@ export const broadcastsCatalog = defineCatalog(
 	{
 		broadcasts: {
 			composer: broadcastComposerCatalog['es-MX'],
+			personal: {
+				editLabel: 'Editar plantilla personal {{name}}',
+				editTitle: 'Editar plantilla personal',
+				editDescription:
+					'Cambia el nombre, el destino y los valores del mensaje guardados en esta plantilla personal.',
+				sendLabel: 'Enviar {{name}} a {{target}} ahora',
+				incomplete:
+					'A esta plantilla le faltan campos obligatorios del mensaje. Complétalos con Usar plantilla antes de enviarla.',
+				save: 'Guardar',
+				help: 'Guarda hasta {{max}} plantillas personales con un destino y campos de mensaje reutilizables.',
+				saveNew: 'Guardar plantilla personal',
+				update: 'Actualizar plantilla personal',
+				name: 'Nombre',
+				saveDescription:
+					'Solo tú puedes ver esta plantilla. Al usarla, tus valores guardados se cargan en un anuncio nuevo.',
+				limit:
+					'Alcanzaste el límite de {{max}} plantillas personales. Actualiza o elimina una para liberar espacio.',
+				saveFailed: 'No se pudo guardar tu plantilla personal. Reintenta.',
+				loadFailed: 'No se pudieron cargar tus plantillas personales.',
+				loading: 'Cargando plantilla personal…',
+				missing: 'Esta plantilla personal no está disponible o pertenece a otra persona.',
+				count: '{{count}} de {{max}} plantillas personales',
+				new: 'Nueva plantilla personal',
+				empty:
+					'Aún no tienes plantillas personales. Abre el editor de anuncios y elige “Guardar plantilla personal” para crear una.',
+				unavailable: 'Plantilla o destino no disponible',
+				targetUnavailable: 'Destino no disponible',
+				deleteLabel: 'Eliminar plantilla personal {{name}}',
+				deleteTitle: 'Eliminar plantilla personal',
+				deleteDescription: '¿Eliminar “{{name}}”? Se conservarán los anuncios existentes.',
+				deleteFailed: 'No se pudo eliminar tu plantilla personal. Reintenta.',
+			},
+			templates: {
+				title: 'Mis plantillas',
+				description: 'Descripción',
+				use: 'Usar plantilla',
+				useLabel: 'Usar {{template}} para {{target}}',
+				loading: 'Cargando plantillas…',
+				loadFailed: 'No se pudieron cargar las plantillas y los destinos disponibles.',
+				retry: 'Reintentar',
+				empty: 'No hay plantillas disponibles para tus destinos de anuncios.',
+			},
 			title: 'Mis anuncios',
 			refresh: 'Actualizar',
 			description: 'Consulta y administra tus anuncios',

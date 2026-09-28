@@ -14,6 +14,7 @@ import {
 	canAccessBroadcastTargetByAction,
 	filterBroadcastTargetsByAction,
 } from './broadcasts-permissions'
+import personalTemplateRoutes from './broadcasts-personal-templates'
 
 import type { Broadcasts } from '@repo/broadcasts'
 import type { Groups, PermissionWithDetails } from '@repo/groups'
@@ -538,6 +539,7 @@ const broadcasts = new Hono<App>()
 
 // Apply authentication middleware to all routes
 broadcasts.use('*', requireAllianceMember())
+broadcasts.route('/personal-templates', personalTemplateRoutes)
 
 // =============================================================================
 // BROADCAST TARGETS

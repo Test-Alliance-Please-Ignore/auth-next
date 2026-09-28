@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router'
+import { Link, useNavigate, useSearchParams } from 'react-router'
 
-import { parseBroadcastSrpMode } from '@repo/broadcasts'
+import { getPersonalBroadcastTemplateContent, parseBroadcastSrpMode } from '@repo/broadcasts'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -14,6 +14,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { BroadcastFeedback } from '@/features/broadcasts/components/broadcast-feedback'
 import { BroadcastPreviewPane } from '@/features/broadcasts/components/broadcast-preview-pane'
 import { DiscordTimestampHelperDialog } from '@/features/broadcasts/components/discord-timestamp-helper-dialog'
+import { SavePersonalBroadcastTemplate } from '@/features/broadcasts/components/save-personal-broadcast-template'
 import {
 	getInitialDoctrineFieldState,
 	resolveDoctrineSelectionFromValue,
@@ -28,6 +29,7 @@ import { useBroadcastDraftInitializer } from '@/features/broadcasts/hooks/use-br
 import { renderBroadcastTemplateMessage } from '@/features/broadcasts/message-template-renderer'
 import { convertUnixTimestampsForPreview } from '@/features/broadcasts/preview-timestamps'
 import { generateSrpTokenAtFormLoad } from '@/features/broadcasts/srp-token-generator'
+import { canUseTemplateForTarget } from '@/features/broadcasts/template-shortcuts'
 import {
 	autoResizeTextarea,
 	parseBooleanField,
@@ -40,6 +42,7 @@ import {
 	useBroadcastTargets,
 	useBroadcastTemplates,
 	useCreateBroadcast,
+	usePersonalBroadcastTemplates,
 	useSendBroadcast,
 	useUpdateBroadcast,
 } from '@/hooks/useBroadcasts'
@@ -49,6 +52,7 @@ import { useUserPermissions } from '@/hooks/useUserPermissions'
 import { formatNumber, useAppTranslation } from '@/i18n'
 
 import type { FormEvent } from 'react'
+import type { PersonalBroadcastTemplate } from '@repo/broadcasts'
 import type { MessageText } from '@/hooks/useMessage'
 
 const DISCORD_MESSAGE_MAX_LENGTH = 2000
@@ -60,11 +64,106 @@ function wrapWithFrogsirenBanner(message: string): string {
 }
 
 export default function NewBroadcastPage() {
-	const { t } = useAppTranslation()
 	const [searchParams] = useSearchParams()
 	const draftId = searchParams.get('draftId') ?? ''
+	// A different compose URL starts a fresh form even when this route stays mounted.
+	// Draft identity takes precedence over any shortcut parameters.
+	const templateId = draftId ? null : searchParams.get('templateId')
+	const targetId = draftId ? null : searchParams.get('targetId')
+	const personalTemplateId = draftId ? null : searchParams.get('personalTemplateId')
+	const editPersonalTemplate = searchParams.get('editTemplate') === 'true'
+	if (personalTemplateId !== null) {
+		return (
+			<PersonalBroadcastComposer
+				key={JSON.stringify([personalTemplateId, editPersonalTemplate])}
+				id={personalTemplateId}
+				edit={editPersonalTemplate}
+			/>
+		)
+	}
+	return (
+		<BroadcastComposer
+			key={JSON.stringify([draftId, templateId, targetId])}
+			draftId={draftId}
+			requestedTemplateId={templateId}
+			requestedTargetId={targetId}
+		/>
+	)
+}
+
+function PersonalBroadcastComposer({ id, edit }: { id: string; edit: boolean }) {
+	const { t } = useAppTranslation()
+	const templates = usePersonalBroadcastTemplates()
+	const template = templates.data?.find((item) => item.id === id)
+	const title = t(edit ? 'broadcasts.personal.editTitle' : 'broadcasts.composer.newTitle')
+	usePageTitle(title)
+	if (template) {
+		return (
+			<BroadcastComposer
+				draftId=""
+				requestedTemplateId={template.templateId ?? 'custom'}
+				requestedTargetId={template.targetId}
+				personalTemplate={template}
+				editPersonalTemplate={edit}
+			/>
+		)
+	}
+	return (
+		<Container>
+			<PageHeader title={title} />
+			<Section>
+				<Card>
+					<CardContent className="space-y-3 py-4">
+						<p role={templates.isPending ? 'status' : 'alert'}>
+							{t(
+								templates.isError
+									? 'broadcasts.personal.loadFailed'
+									: templates.isPending
+										? 'broadcasts.personal.loading'
+										: 'broadcasts.personal.missing'
+							)}
+						</p>
+						<Button asChild variant="secondary">
+							<Link to="/broadcasts/new">{t('broadcasts.composer.shortcutChoose')}</Link>
+						</Button>
+						{templates.isError && (
+							<Button variant="secondary" onClick={() => void templates.refetch()}>
+								{t('broadcasts.templates.retry')}
+							</Button>
+						)}
+					</CardContent>
+				</Card>
+			</Section>
+		</Container>
+	)
+}
+
+function BroadcastComposer({
+	draftId,
+	requestedTemplateId,
+	requestedTargetId,
+	personalTemplate,
+	editPersonalTemplate = false,
+}: {
+	draftId: string
+	requestedTemplateId: string | null
+	requestedTargetId: string | null
+	personalTemplate?: PersonalBroadcastTemplate
+	editPersonalTemplate?: boolean
+}) {
+	const { t } = useAppTranslation()
 	const isEditMode = draftId.length > 0
-	usePageTitle(isEditMode ? t('broadcasts.composer.editTitle') : t('broadcasts.composer.newTitle'))
+	const hasShortcut = requestedTemplateId !== null || requestedTargetId !== null
+	const shortcutInitializedRef = useRef(false)
+	const [shortcutInitialized, setShortcutInitialized] = useState(false)
+	const title = t(
+		editPersonalTemplate
+			? 'broadcasts.personal.editTitle'
+			: isEditMode
+				? 'broadcasts.composer.editTitle'
+				: 'broadcasts.composer.newTitle'
+	)
+	usePageTitle(title)
 	const navigate = useNavigate()
 	const createBroadcast = useCreateBroadcast()
 	const sendBroadcast = useSendBroadcast()
@@ -80,7 +179,7 @@ export default function NewBroadcastPage() {
 	} = useBroadcast(draftId, isEditMode)
 
 	// Form state
-	const [selectedTargetId, setSelectedTargetId] = useState<string>('')
+	const [selectedTargetId, setSelectedTargetId] = useState(requestedTargetId ?? '')
 	const [selectedTemplateId, setSelectedTemplateId] = useState<string>('custom')
 	const [customMessage, setCustomMessage] = useState<string>('')
 	const [templateFields, setTemplateFields] = useState<Record<string, string>>({})
@@ -108,19 +207,48 @@ export default function NewBroadcastPage() {
 	const autoSelectedTemplateTargetsRef = useRef<Set<string>>(new Set())
 
 	// Fetch all broadcast targets available to the user
-	const { data: targets, error: targetsError, isError: targetsFailed } = useBroadcastTargets()
+	const {
+		data: targets,
+		error: targetsError,
+		isError: targetsFailed,
+		refetch: refetchTargets,
+	} = useBroadcastTargets()
 
 	// Get the selected target to determine type
 	const selectedTarget = targets?.find((t) => t.id === selectedTargetId)
 
 	// Fetch templates scoped to the selected target/type
 	const {
-		data: templates,
+		data: availableTemplates,
 		error: templatesError,
 		isError: templatesFailed,
-	} = useBroadcastTemplates(selectedTarget?.type, selectedTargetId || undefined)
-	const { data: doctrines = [] } = useDoctrines()
-	const { data: stagingSystems = [] } = useStagingSystems()
+		refetch: refetchTemplates,
+	} = useBroadcastTemplates(selectedTarget?.type, selectedTarget?.id)
+	const templates = useMemo(
+		() =>
+			selectedTarget
+				? availableTemplates?.filter((template) =>
+						canUseTemplateForTarget(template, selectedTarget)
+					)
+				: undefined,
+		[availableTemplates, selectedTarget]
+	)
+	const { data: doctrines = [], isLoading: doctrinesLoading } = useDoctrines()
+	const { data: stagingSystems = [], isLoading: stagingLoading } = useStagingSystems()
+	const shortcutInvalid =
+		hasShortcut &&
+		(!requestedTemplateId ||
+			!requestedTargetId ||
+			(targets !== undefined && !selectedTarget) ||
+			(templates !== undefined &&
+				!(shortcutInitialized
+					? selectedTemplateId === 'custom'
+					: personalTemplate?.templateId === null) &&
+				!templates.some(
+					(template) =>
+						template.id === (shortcutInitialized ? selectedTemplateId : requestedTemplateId)
+				)))
+	const shortcutPending = hasShortcut && !shortcutInitialized && !shortcutInvalid
 
 	// Message state
 	const [message, setMessage] = useState<{ type: 'success' | 'error'; text: MessageText } | null>(
@@ -302,6 +430,69 @@ export default function NewBroadcastPage() {
 		[stagingSystems, templates, user?.characters, user?.mainCharacterId]
 	)
 
+	useEffect(() => {
+		if (
+			!hasShortcut ||
+			shortcutInitializedRef.current ||
+			shortcutInvalid ||
+			targetsFailed ||
+			templatesFailed ||
+			!selectedTarget ||
+			!templates ||
+			stagingLoading ||
+			(personalTemplate && doctrinesLoading) ||
+			!user ||
+			!requestedTemplateId
+		)
+			return
+
+		// Claim initialization before applying defaults: Strict Mode and query refetches
+		// must not regenerate SRP tokens or overwrite fields the author has entered.
+		shortcutInitializedRef.current = true
+		handleTemplateChange(requestedTemplateId)
+		if (personalTemplate) {
+			const template = templates.find((item) => item.id === requestedTemplateId)
+			const {
+				mentionLevel: mention,
+				__prefixText: prefix,
+				__defaultText: suffix,
+				message: custom,
+				...fields
+			} = getPersonalBroadcastTemplateContent(
+				personalTemplate.content,
+				template?.fieldSchema.map((field) => field.name) ?? ['message']
+			)
+			setMentionLevel(mention === 'none' || mention === 'everyone' ? mention : 'here')
+			setMessageParts({ prefix: prefix ?? '', suffix: suffix ?? '' })
+			if (personalTemplate.templateId) {
+				// Keep fresh generated defaults (especially SRP tokens), then overlay
+				// saved author values and let the normal field controls resolve them.
+				setTemplateFields((current) => ({
+					...current,
+					...fields,
+					...(custom !== undefined ? { message: custom } : {}),
+				}))
+				setTemplateFieldSelections({})
+			} else {
+				setCustomMessage(custom ?? '')
+			}
+		}
+		setShortcutInitialized(true)
+	}, [
+		handleTemplateChange,
+		doctrinesLoading,
+		personalTemplate,
+		hasShortcut,
+		requestedTemplateId,
+		selectedTarget,
+		shortcutInvalid,
+		stagingLoading,
+		targetsFailed,
+		templates,
+		templatesFailed,
+		user,
+	])
+
 	const updateTemplateField = (fieldName: string, value: string) => {
 		setTemplateFields((current) => ({
 			...current,
@@ -475,7 +666,8 @@ export default function NewBroadcastPage() {
 	])
 
 	useEffect(() => {
-		if (isEditMode || !selectedTargetId || !templates || templates.length === 0) return
+		if (isEditMode || hasShortcut || !selectedTargetId || !templates || templates.length === 0)
+			return
 
 		if (
 			selectedTemplateId === 'custom' &&
@@ -492,7 +684,14 @@ export default function NewBroadcastPage() {
 		if (hasValidSelection) return
 
 		handleTemplateChange(templates[0]!.id)
-	}, [handleTemplateChange, isEditMode, selectedTargetId, selectedTemplateId, templates])
+	}, [
+		handleTemplateChange,
+		hasShortcut,
+		isEditMode,
+		selectedTargetId,
+		selectedTemplateId,
+		templates,
+	])
 
 	useEffect(() => {
 		if (canCreateFleetTracking) return
@@ -522,7 +721,7 @@ export default function NewBroadcastPage() {
 
 	const handleSend = async (e: FormEvent) => {
 		e.preventDefault()
-		if (!canSubmit || isSubmitting) return
+		if (editPersonalTemplate || !canSubmit || isSubmitting) return
 		if (isOverRenderedMessageLimit) {
 			setMessage({
 				type: 'error',
@@ -594,7 +793,7 @@ export default function NewBroadcastPage() {
 	}
 
 	const handleSaveAsDraft = async () => {
-		if (!canSubmit || isSubmitting) return
+		if (editPersonalTemplate || !canSubmit || isSubmitting) return
 		if (isEditMode && draftBroadcast?.status !== 'draft') {
 			setMessage({ type: 'error', text: (t) => t('broadcasts.composer.onlyDraft') })
 			return
@@ -625,6 +824,10 @@ export default function NewBroadcastPage() {
 	}
 
 	const canSubmit =
+		!shortcutPending &&
+		!shortcutInvalid &&
+		!targetsFailed &&
+		!templatesFailed &&
 		Boolean(selectedTarget) &&
 		(selectedTemplateId === 'custom'
 			? customMessage.trim().length > 0
@@ -644,11 +847,13 @@ export default function NewBroadcastPage() {
 	return (
 		<Container>
 			<PageHeader
-				title={isEditMode ? t('broadcasts.composer.editTitle') : t('broadcasts.composer.newTitle')}
+				title={title}
 				description={
-					isEditMode
-						? t('broadcasts.composer.editDescription')
-						: t('broadcasts.composer.newDescription')
+					editPersonalTemplate
+						? t('broadcasts.personal.editDescription')
+						: isEditMode
+							? t('broadcasts.composer.editDescription')
+							: t('broadcasts.composer.newDescription')
 				}
 				action={
 					<Button variant="cancel" onClick={() => navigate('/broadcasts')} size="default">
@@ -658,6 +863,40 @@ export default function NewBroadcastPage() {
 			/>
 
 			<Section>
+				{hasShortcut &&
+					(shortcutPending || shortcutInvalid || targetsFailed || templatesFailed) && (
+						<Card>
+							<CardContent className="space-y-3 py-3 text-sm">
+								<p role={shortcutInvalid ? 'alert' : 'status'}>
+									{t(
+										shortcutInvalid
+											? 'broadcasts.composer.shortcutInvalid'
+											: targetsFailed || templatesFailed
+												? 'broadcasts.composer.shortcutFailed'
+												: 'broadcasts.composer.shortcutLoading'
+									)}
+								</p>
+								<div className="flex flex-wrap gap-2">
+									<Button asChild variant="secondary" size="sm">
+										<Link to="/broadcasts/new">{t('broadcasts.composer.shortcutChoose')}</Link>
+									</Button>
+									{(targetsFailed || templatesFailed) && (
+										<Button
+											type="button"
+											variant="secondary"
+											size="sm"
+											onClick={() => {
+												void refetchTargets()
+												void refetchTemplates()
+											}}
+										>
+											{t('broadcasts.templates.retry')}
+										</Button>
+									)}
+								</div>
+							</CardContent>
+						</Card>
+					)}
 				{/* Success/Error Message */}
 				{isEditMode && draftLoading && (
 					<Card>
@@ -666,7 +905,7 @@ export default function NewBroadcastPage() {
 						</CardContent>
 					</Card>
 				)}
-				{loadFailure && (
+				{loadFailure && !hasShortcut && (
 					<Card>
 						<CardContent className="py-3 text-sm text-destructive" role="alert">
 							<BroadcastFeedback {...loadFailure} />
@@ -717,7 +956,7 @@ export default function NewBroadcastPage() {
 											})) ?? []
 										}
 										placeholder={t('broadcasts.composer.targetPlaceholder')}
-										disabled={isEditMode}
+										disabled={isEditMode || (hasShortcut && !shortcutInitialized)}
 									/>
 									<p className="text-xs text-muted-foreground">
 										{t('broadcasts.composer.targetHelp')}
@@ -739,7 +978,9 @@ export default function NewBroadcastPage() {
 											})) ?? []),
 										]}
 										placeholder={t('broadcasts.composer.customMessage')}
-										disabled={!selectedTargetId || isEditMode}
+										disabled={
+											!selectedTargetId || isEditMode || (hasShortcut && !shortcutInitialized)
+										}
 									/>
 									<p className="text-xs text-muted-foreground">
 										{!selectedTargetId
@@ -820,6 +1061,20 @@ export default function NewBroadcastPage() {
 								</div>
 							) : null}
 
+							<SavePersonalBroadcastTemplate
+								source={personalTemplate}
+								editOnly={editPersonalTemplate}
+								disabled={!canSubmit || isSubmitting}
+								getValues={() => ({
+									targetId: selectedTargetId,
+									templateId: selectedTemplateId === 'custom' ? null : selectedTemplateId,
+									content: getPersonalBroadcastTemplateContent(
+										buildBroadcastData().content,
+										selectedTemplate?.fieldSchema.map((field) => field.name) ?? ['message']
+									),
+								})}
+							/>
+
 							{/* Submit Buttons */}
 							<div className="text-sm">
 								<span
@@ -835,40 +1090,42 @@ export default function NewBroadcastPage() {
 									})}
 								</span>
 							</div>
-							<div className="flex flex-col gap-3 pt-4 sm:flex-row sm:justify-end">
-								<Button
-									variant="cancel"
-									type="button"
-									onClick={() => navigate('/broadcasts')}
-									disabled={isSubmitting}
-									className="w-full sm:w-auto"
-								>
-									{t('common.cancel')}
-								</Button>
-								<Button
-									variant="secondary"
-									type="button"
-									disabled={!canSubmit || isSubmitting}
-									loading={isSavingDraft}
-									loadingText={t('broadcasts.composer.saving')}
-									showIcon={false}
-									onClick={handleSaveAsDraft}
-									className="w-full sm:w-auto"
-								>
-									{t('broadcasts.composer.saveDraft')}
-								</Button>
-								<Button
-									variant="confirm"
-									type="submit"
-									disabled={!canSubmit || isSubmitting || isOverRenderedMessageLimit}
-									loading={isSending}
-									loadingText={t('broadcasts.sending')}
-									showIcon={false}
-									className="w-full sm:w-auto"
-								>
-									{t('broadcasts.composer.send')}
-								</Button>
-							</div>
+							{!editPersonalTemplate && (
+								<div className="flex flex-col gap-3 pt-4 sm:flex-row sm:justify-end">
+									<Button
+										variant="cancel"
+										type="button"
+										onClick={() => navigate('/broadcasts')}
+										disabled={isSubmitting}
+										className="w-full sm:w-auto"
+									>
+										{t('common.cancel')}
+									</Button>
+									<Button
+										variant="secondary"
+										type="button"
+										disabled={!canSubmit || isSubmitting}
+										loading={isSavingDraft}
+										loadingText={t('broadcasts.composer.saving')}
+										showIcon={false}
+										onClick={handleSaveAsDraft}
+										className="w-full sm:w-auto"
+									>
+										{t('broadcasts.composer.saveDraft')}
+									</Button>
+									<Button
+										variant="confirm"
+										type="submit"
+										disabled={!canSubmit || isSubmitting || isOverRenderedMessageLimit}
+										loading={isSending}
+										loadingText={t('broadcasts.sending')}
+										showIcon={false}
+										className="w-full sm:w-auto"
+									>
+										{t('broadcasts.composer.send')}
+									</Button>
+								</div>
+							)}
 						</form>
 					</CardContent>
 				</Card>

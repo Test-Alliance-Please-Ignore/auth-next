@@ -1,8 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
+import { useAuth } from '@/hooks/useAuth'
 import { permissionKeys } from '@/hooks/usePermissions'
 import { api } from '@/lib/api'
 
+import type { PersonalBroadcastTemplateInput } from '@repo/broadcasts'
 import type {
 	BroadcastStatus,
 	CreateBroadcastRequest,
@@ -16,6 +18,9 @@ import type {
 // Query keys
 export const broadcastKeys = {
 	all: ['broadcasts'] as const,
+	personalTemplates: () => ['broadcasts', 'personal-templates'] as const,
+	personalTemplatesForUser: (userId: string) =>
+		['broadcasts', 'personal-templates', userId] as const,
 	targets: () => [...broadcastKeys.all, 'targets'] as const,
 	target: (id: string) => [...broadcastKeys.targets(), id] as const,
 	templates: () => [...broadcastKeys.all, 'templates'] as const,
@@ -46,6 +51,35 @@ export const broadcastKeys = {
 	broadcastsByPermission: (permissionId: string, status?: BroadcastStatus) =>
 		[...broadcastKeys.broadcasts(), 'permission', permissionId, status] as const,
 	deliveries: (broadcastId: string) => [...broadcastKeys.all, broadcastId, 'deliveries'] as const,
+}
+
+export function usePersonalBroadcastTemplates() {
+	const { user } = useAuth()
+	return useQuery({
+		queryKey: broadcastKeys.personalTemplatesForUser(user?.id ?? ''),
+		queryFn: () => api.getPersonalBroadcastTemplates(),
+		enabled: Boolean(user),
+		staleTime: 60_000,
+	})
+}
+
+export function useSavePersonalBroadcastTemplate() {
+	const queryClient = useQueryClient()
+	return useMutation({
+		mutationFn: ({ id, data }: { id?: string; data: PersonalBroadcastTemplateInput }) =>
+			id
+				? api.updatePersonalBroadcastTemplate(id, data)
+				: api.createPersonalBroadcastTemplate(data),
+		onSuccess: () => queryClient.invalidateQueries({ queryKey: broadcastKeys.personalTemplates() }),
+	})
+}
+
+export function useDeletePersonalBroadcastTemplate() {
+	const queryClient = useQueryClient()
+	return useMutation({
+		mutationFn: (id: string) => api.deletePersonalBroadcastTemplate(id),
+		onSuccess: () => queryClient.invalidateQueries({ queryKey: broadcastKeys.personalTemplates() }),
+	})
 }
 
 // ===== Broadcast Targets =====
