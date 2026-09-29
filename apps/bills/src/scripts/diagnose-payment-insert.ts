@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { Pool } from '@neondatabase/serverless'
 import { config } from 'dotenv'
 
-const PAYMENT_LOOKBEHIND_MS = 60 * 60 * 1000
+const PAYMENT_LOOKBEHIND_MS = 2 * 60 * 60 * 1000
 const MAX_CANDIDATES = 25
 
 type QueryRow = Record<string, unknown>

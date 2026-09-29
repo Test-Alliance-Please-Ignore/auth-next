@@ -36,18 +36,21 @@ describe('findPaymentsForBill', () => {
 						amount: '100',
 						firstPartyId: 'character-1',
 						entryDate: new Date(),
+						updatedAt: new Date(),
 					},
 					{
 						journalId: 'journal-invalid-amount',
 						amount: 'not-a-number',
 						firstPartyId: 'character-1',
 						entryDate: new Date(),
+						updatedAt: new Date(),
 					},
 					{
 						journalId: 'journal-missing-payer',
 						amount: '100',
 						firstPartyId: null,
 						entryDate: new Date(),
+						updatedAt: new Date(),
 					},
 				],
 				[],
@@ -84,6 +87,7 @@ describe('findPaymentsForBill', () => {
 			amount: '100',
 			firstPartyId: 'character-1',
 			entryDate: new Date(1_000 + index),
+			updatedAt: new Date(1_000 + index),
 		}))
 		const secondPage = [
 			{
@@ -91,6 +95,7 @@ describe('findPaymentsForBill', () => {
 				amount: '100',
 				firstPartyId: 'character-1',
 				entryDate: new Date(2_000),
+				updatedAt: new Date(2_000),
 			},
 		]
 		const { ctx, recordWalletPayments, execute } = createContext({

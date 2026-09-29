@@ -1,4 +1,5 @@
 import { sql } from '@repo/db-utils'
+import { parseDateOrNull } from '@repo/worker-utils'
 
 import { getWorkflowLogger } from '../../context'
 
@@ -7,13 +8,14 @@ import type { WorkflowContext } from '../../context'
 import type { BillPaymentCheckData } from '../fetch-bill-data'
 
 const PAYMENT_BATCH_SIZE = 100
-const PAYMENT_LOOKBEHIND_MS = 60 * 60 * 1000
+const PAYMENT_LOOKBEHIND_MS = 2 * 60 * 60 * 1000
 
 type CorporationWalletPaymentRow = {
 	journalId: string
 	amount: string
 	firstPartyId: string | null
 	entryDate: Date
+	updatedAt: Date
 }
 
 type CharacterWalletPaymentRow = {
@@ -21,12 +23,13 @@ type CharacterWalletPaymentRow = {
 	amount: string
 	firstPartyId: string | null
 	entryDate: Date
+	updatedAt: Date
 }
 
 type WalletPaymentRow = CorporationWalletPaymentRow | CharacterWalletPaymentRow
 
 type PaymentCursor = {
-	entryDate: Date
+	updatedAt: Date
 	journalId: string
 }
 
@@ -121,20 +124,23 @@ async function findPaymentTransactionsForCorporationFromDb(
 	}
 
 	const tokenPrefix = `${billData.paymentToken}%`
+	const paymentStartAt = getPaymentStartAt(billData)
 	const paymentSearchStart = getPaymentSearchStart(billData)
 	const cursorCondition = cursor
-		? sql`date > ${cursor.entryDate} or (date = ${cursor.entryDate} and journal_id > ${cursor.journalId})`
+		? sql`updated_at > ${cursor.updatedAt} or (updated_at = ${cursor.updatedAt} and journal_id > ${cursor.journalId})`
 		: sql`true`
 	const results = await ctx.db.execute<CorporationWalletPaymentRow>(
 		sql`select
 			journal_id::text as "journalId",
 			amount as "amount",
 			first_party_id as "firstPartyId",
-			date as "entryDate"
+			date as "entryDate",
+			updated_at as "updatedAt"
 		from corporation_wallet_journal
 		where corporation_id = ${corporationId}
-			and date >= ${paymentSearchStart}
-			and date <= ${searchEnd}
+			and date >= ${paymentStartAt}
+			and updated_at >= ${paymentSearchStart}
+			and updated_at <= ${searchEnd}
 			and (${cursorCondition})
 			and (
 				case
@@ -150,7 +156,7 @@ async function findPaymentTransactionsForCorporationFromDb(
 				from bill_payments
 				where bill_payments.esi_transaction_id = corporation_wallet_journal.journal_id::text
 			)
-		order by date asc, journal_id asc
+		order by updated_at asc, journal_id asc
 		limit ${PAYMENT_BATCH_SIZE}`
 	)
 	return results.rows ?? []
@@ -186,20 +192,23 @@ async function findPaymentTransactionsForCharacterFromDb(
 	}
 
 	const tokenPrefix = `${billData.paymentToken}%`
+	const paymentStartAt = getPaymentStartAt(billData)
 	const paymentSearchStart = getPaymentSearchStart(billData)
 	const cursorCondition = cursor
-		? sql`date > ${cursor.entryDate} or (date = ${cursor.entryDate} and journal_id > ${cursor.journalId})`
+		? sql`updated_at > ${cursor.updatedAt} or (updated_at = ${cursor.updatedAt} and journal_id > ${cursor.journalId})`
 		: sql`true`
 	const results = await ctx.db.execute<CharacterWalletPaymentRow>(
 		sql`select
 			journal_id::text as "journalId",
 			amount as "amount",
 			first_party_id as "firstPartyId",
-			date as "entryDate"
+			date as "entryDate",
+			updated_at as "updatedAt"
 		from character_wallet_journal
 		where character_id = ${characterId}
-			and date >= ${paymentSearchStart}
-			and date <= ${searchEnd}
+			and date >= ${paymentStartAt}
+			and updated_at >= ${paymentSearchStart}
+			and updated_at <= ${searchEnd}
 			and (${cursorCondition})
 			and (
 				case
@@ -215,24 +224,38 @@ async function findPaymentTransactionsForCharacterFromDb(
 				from bill_payments
 				where bill_payments.esi_transaction_id = character_wallet_journal.journal_id::text
 			)
-		order by date asc, journal_id asc
+		order by updated_at asc, journal_id asc
 		limit ${PAYMENT_BATCH_SIZE}`
 	)
 	return results.rows ?? []
 }
 
-function getPaymentSearchStart(billData: BillPaymentCheckData): Date {
-	const paymentStartAt = new Date(billData.paymentStartAt)
-	const lastCheckedAt = billData.paymentLastCheckedAt
-		? new Date(billData.paymentLastCheckedAt).getTime() - PAYMENT_LOOKBEHIND_MS
-		: paymentStartAt.getTime()
+function getPaymentStartAt(billData: BillPaymentCheckData): Date {
+	const paymentStartAt = parseDateOrNull(billData.paymentStartAt)
+	if (!paymentStartAt) {
+		throw new Error(`Invalid payment start date for bill ${billData.id}`)
+	}
+	return paymentStartAt
+}
 
-	return new Date(Math.max(paymentStartAt.getTime(), lastCheckedAt))
+function getPaymentSearchStart(billData: BillPaymentCheckData): Date {
+	const paymentStartAt = getPaymentStartAt(billData)
+	if (!billData.paymentLastCheckedAt) {
+		return paymentStartAt
+	}
+
+	const lastCheckedAt = parseDateOrNull(billData.paymentLastCheckedAt)
+	if (!lastCheckedAt) {
+		return paymentStartAt
+	}
+	return new Date(
+		Math.max(paymentStartAt.getTime(), lastCheckedAt.getTime() - PAYMENT_LOOKBEHIND_MS)
+	)
 }
 
 function getPaymentCursor(row: WalletPaymentRow): PaymentCursor {
 	return {
-		entryDate: row.entryDate,
+		updatedAt: row.updatedAt,
 		journalId: row.journalId,
 	}
 }
