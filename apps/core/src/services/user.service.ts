@@ -221,8 +221,6 @@ export class UserService {
 			discordUserId: user.discordUserId || null,
 			characters: charactersDTO,
 			is_admin: user.is_admin,
-			legacyAuthUserId: user.legacyAuthUserId || null,
-			legacyAuthUserUsername: user.legacyAuthUserUsername || null,
 			createdAt: user.createdAt,
 			updatedAt: user.updatedAt,
 		}
@@ -374,51 +372,5 @@ export class UserService {
 		clearUserProfileCache(userId)
 
 		return true
-	}
-
-	/**
-	 * Update legacy auth information for a user
-	 * Validates no duplicate links and updates user record
-	 */
-	async updateLegacyAuthInfo(
-		userId: string,
-		legacyId: string,
-		legacyUsername: string
-	): Promise<void> {
-		// Validate user exists
-		const user = await this.db.query.users.findFirst({
-			where: eq(users.id, userId),
-		})
-
-		if (!user) {
-			throw new Error('User not found')
-		}
-
-		// Check if current user already has legacy auth linked
-		if (user.legacyAuthUserId) {
-			throw new Error('User already has a legacy account linked')
-		}
-
-		// Check for duplicate legacyAuthUserId across all users
-		const existingUserWithLegacyId = await this.db.query.users.findFirst({
-			where: eq(users.legacyAuthUserId, legacyId),
-		})
-
-		if (existingUserWithLegacyId) {
-			throw new Error('This legacy account is already linked to another user')
-		}
-
-		// Update user record with legacy auth fields
-		await this.db
-			.update(users)
-			.set({
-				legacyAuthUserId: legacyId,
-				legacyAuthUserUsername: legacyUsername,
-				legacyAuthUserEmailHash: null,
-				updatedAt: new Date(),
-			})
-			.where(eq(users.id, userId))
-
-		clearUserProfileCache(userId)
 	}
 }

@@ -7,9 +7,9 @@ import { mumbleKeys } from './query-keys'
 
 export const MUMBLE_FEATURE_FLAG_KEY = 'mumble.enabled'
 
-export function useMumbleFeatureEnabled() {
+export function useMumbleFeatureEnabled(options?: { enabled?: boolean }) {
 	const queryClient = useQueryClient()
-	const { data, isLoading, isPlaceholderData } = useFeatureFlags()
+	const { data, isLoading, isPlaceholderData } = useFeatureFlags(options)
 	const isEnabled = data?.[MUMBLE_FEATURE_FLAG_KEY] === true
 	const isResolving = isLoading || isPlaceholderData
 

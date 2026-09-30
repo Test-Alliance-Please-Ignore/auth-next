@@ -9,7 +9,7 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 
 import { buildOAuthApiMeResponseFromUserDetails } from '@repo/admin'
-import { and, desc, eq, gt, ilike, inArray, sql } from '@repo/db-utils'
+import { and, desc, eq, gt, ilike, inArray } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { logger } from '@repo/hono-helpers'
 
@@ -493,14 +493,6 @@ app.post('/legacy/import-character-links', requireAuth(), requireAdmin(), async 
 		})
 		inserted += 1
 	}
-
-	await db
-		.update(users)
-		.set({
-			legacyAuthUserId,
-			updatedAt: new Date(),
-		})
-		.where(and(eq(users.id, modernUserId), sql`${users.legacyAuthUserId} is null`))
 
 	logger.info('[Admin Legacy Import] Character links imported', {
 		actorUserId: user.id,

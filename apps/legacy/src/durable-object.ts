@@ -202,6 +202,33 @@ export class LegacyDO extends DurableObject<Env> implements Legacy {
 		return actorLegacyCharacterNames
 	}
 
+	async resolveLegacyActorModernUsers(
+		legacyAuthUserIds: string[]
+	): Promise<Record<string, string>> {
+		const uniqueIds = [...new Set(legacyAuthUserIds.filter(Boolean))]
+		if (uniqueIds.length === 0) return {}
+
+		const matches = await this.db.query.legacyMigrationQueue.findMany({
+			where: and(
+				inArray(legacyMigrationQueue.legacyAuthUserId, uniqueIds),
+				inArray(legacyMigrationQueue.status, ['partially_applied', 'applied'])
+			),
+			columns: { legacyAuthUserId: true, modernUserId: true },
+		})
+		const candidates = new Map<string, Set<string>>()
+		for (const match of matches) {
+			const modernUserIds = candidates.get(match.legacyAuthUserId) ?? new Set<string>()
+			modernUserIds.add(match.modernUserId)
+			candidates.set(match.legacyAuthUserId, modernUserIds)
+		}
+
+		return Object.fromEntries(
+			[...candidates].flatMap(([legacyAuthUserId, modernUserIds]) =>
+				modernUserIds.size === 1 ? [[legacyAuthUserId, [...modernUserIds][0]]] : []
+			)
+		)
+	}
+
 	async listMigrations(filters: {
 		page: number
 		pageSize: number

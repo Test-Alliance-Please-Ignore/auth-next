@@ -2,8 +2,12 @@ import { describe, expect, it } from 'vitest'
 
 import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
 
-import { resolveSessionRoles } from '../../middleware/session'
-import { buildAuthSessionResponse, shouldUseSecureSessionCookie } from '../auth'
+import { resolveSessionRoles, shouldBypassSessionMiddleware } from '../../middleware/session'
+import {
+	buildAuthPermissionsResponse,
+	buildAuthSessionResponse,
+	shouldUseSecureSessionCookie,
+} from '../auth'
 
 describe('/auth/session response shaping', () => {
 	it('uses persisted role attachments as the session capability source', () => {
@@ -17,52 +21,23 @@ describe('/auth/session response shaping', () => {
 		])
 	})
 
-	it('preserves resolved structure permissions in the session payload', () => {
-		const response = buildAuthSessionResponse(
+	it('returns resolved structure permissions from the deferred permissions payload', () => {
+		const response = buildAuthPermissionsResponse([
 			{
-				id: 'user-1',
-				mainCharacterId: '7001',
-				characters: [],
-				is_admin: false,
-				roles: ['urn:service:core:role:alliance-member'],
-				discordLinked: false,
-				legacyAuth: {
-					userId: null,
-					username: null,
-					isLinked: false,
-				},
+				permissionId: 'perm-structure-viewer',
+				urn: 'urn:structures:all:viewer',
+				name: 'Structures Viewer',
+				description: 'Can view all structures',
 			},
-			[
-				{
-					permissionId: 'perm-structure-viewer',
-					urn: 'urn:structures:all:viewer',
-					name: 'Structures Viewer',
-					description: 'Can view all structures',
-				},
-				{
-					permissionId: null,
-					urn: 'urn:structures:corp-1:manager',
-					name: 'Corp Manager',
-					description: null,
-				},
-			]
-		)
+			{
+				permissionId: null,
+				urn: 'urn:structures:corp-1:manager',
+				name: 'Corp Manager',
+				description: null,
+			},
+		])
 
 		expect(response).toEqual({
-			authenticated: true,
-			user: {
-				id: 'user-1',
-				mainCharacterId: '7001',
-				characters: [],
-				is_admin: false,
-				roles: ['urn:service:core:role:alliance-member'],
-				discordLinked: false,
-				legacyAuth: {
-					userId: null,
-					username: null,
-					isLinked: false,
-				},
-			},
 			permissions: [
 				{
 					permissionId: 'perm-structure-viewer',
@@ -80,12 +55,38 @@ describe('/auth/session response shaping', () => {
 		})
 	})
 
+	it('returns only session identity from the session payload', () => {
+		const response = buildAuthSessionResponse({
+			id: 'user-1',
+			mainCharacterId: '7001',
+			characters: [],
+			is_admin: false,
+			roles: ['urn:service:core:role:alliance-member'],
+		})
+
+		expect(response).toEqual({
+			authenticated: true,
+			user: {
+				id: 'user-1',
+				mainCharacterId: '7001',
+				characters: [],
+				is_admin: false,
+				roles: ['urn:service:core:role:alliance-member'],
+			},
+		})
+	})
+
 	it('returns the unauthenticated shape when there is no user', () => {
 		expect(buildAuthSessionResponse(null)).toEqual({
 			authenticated: false,
 			user: null,
-			permissions: [],
 		})
+	})
+
+	it('bypasses only routes that never require session enforcement or context', () => {
+		expect(shouldBypassSessionMiddleware('/api/flags')).toBe(true)
+		expect(shouldBypassSessionMiddleware('/api/auth/callback')).toBe(false)
+		expect(shouldBypassSessionMiddleware('/api/auth/session')).toBe(false)
 	})
 
 	it('uses secure cookies only on https requests', () => {

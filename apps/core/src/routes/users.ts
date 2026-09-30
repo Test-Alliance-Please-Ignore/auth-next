@@ -56,6 +56,10 @@ function getCorporationAccessCacheKey(userId: string): string {
 	return `https://cache.local/users/${userId}/corporation-access`
 }
 
+function getQuickCorporationAccessCacheKey(userId: string): string {
+	return `https://cache.local/users/${userId}/has-corporation-access-v2`
+}
+
 function getCorporationCoverageCacheKey(corporationId: string): string {
 	return `https://cache.local/corporations/${corporationId}/esi-coverage`
 }
@@ -211,21 +215,12 @@ users.get('/me', async (c) => {
 	// Lazy-load Discord status if needed
 	const discordStatus = await getDiscordStatus(c)
 
-	// Build legacy auth status
-	const isLinked = !!(profile.legacyAuthUserId && profile.legacyAuthUserUsername)
-	const legacyAuth = {
-		userId: profile.legacyAuthUserId,
-		username: profile.legacyAuthUserUsername,
-		isLinked,
-	}
-
 	return c.json({
 		id: profile.id,
 		mainCharacterId: profile.mainCharacterId,
 		characters: profile.characters,
 		is_admin: profile.is_admin,
 		discord: discordStatus,
-		legacyAuth,
 		createdAt: profile.createdAt,
 		updatedAt: profile.updatedAt,
 	})
@@ -441,32 +436,37 @@ users.get(
 	async (c) => {
 		const user = c.get('user')!
 		const db = c.get('db') || createDb(c.env.DATABASE_URL)
+		const noAccess = {
+			hasAccess: false,
+			hasLeadershipAccess: false,
+			hasMemberLeadershipAccess: false,
+		}
 
 		try {
 			// Site admins have access to all corporations
 			if (user.is_admin) {
-				return c.json({ hasAccess: true })
+				return c.json({
+					hasAccess: true,
+					hasLeadershipAccess: true,
+					hasMemberLeadershipAccess: true,
+				})
 			}
 
-			// Get all user's characters
-			const characters = await db.query.userCharacters.findMany({
-				where: eq(userCharacters.userId, user.id),
-				columns: {
-					characterId: true,
-					characterName: true,
-					corporationId: true,
-					hasValidToken: true,
-					status: true,
-				},
-			})
-
-			if (!characters.length) {
-				return c.json({ hasAccess: false })
+			const cacheKey = getQuickCorporationAccessCacheKey(user.id)
+			const cached = await getCachedJson<typeof noAccess>(cacheKey)
+			if (cached) {
+				return c.json(cached)
 			}
 
-			// Get all active managed corporations that can be led by the current user.
-			const managedCorps = filterManagedNonNpcCorps(
-				await db.query.managedCorporations.findMany({
+			const [characters, managedCorporationsResult, hrCorpIds] = await Promise.all([
+				db.query.userCharacters.findMany({
+					where: eq(userCharacters.userId, user.id),
+					columns: {
+						characterId: true,
+						corporationId: true,
+					},
+				}),
+				db.query.managedCorporations.findMany({
 					where: and(
 						eq(managedCorporations.isActive, true),
 						or(
@@ -475,86 +475,87 @@ users.get(
 							eq(managedCorporations.isSpecialPurpose, true)
 						)
 					),
-				})
-			)
-
-			if (!managedCorps.length) {
-				return c.json({ hasAccess: false })
+				}),
+				withRpcResult(
+					getStub<Rpc.Provider<Hr>>(c.env.HR, 'default').getUserHrCorporations(user.id),
+					(result) => [...result]
+				).catch(() => [] as string[]),
+			])
+			const managedCorps = filterManagedNonNpcCorps(managedCorporationsResult)
+			const characterCorpMap = new Map<string, string>()
+			const missingCharacterIds: string[] = []
+			for (const character of characters) {
+				if (character.corporationId) {
+					characterCorpMap.set(character.characterId, character.corporationId)
+				} else {
+					missingCharacterIds.push(character.characterId)
+				}
 			}
 
-			// Fetch corporation IDs for ALL characters (not just first 10)
-			// This ensures we check all managed corporations the user has characters in
-			const charCorpPromises = characters.map(async (character) => {
-				const charStub = getStub<Rpc.Provider<EveCharacterData>>(
-					c.env.EVE_CHARACTER_DATA,
-					'default'
-				)
+			if (missingCharacterIds.length > 0) {
 				try {
-					return withRpcResult(charStub.getCharacterInfo(character.characterId), (result) =>
-						result ? String(result.corporationId) : null
-					)
-				} catch {
-					return null
-				}
-			})
-
-			const characterCorpIds = await Promise.all(charCorpPromises)
-			const uniqueCorpIds = new Set(characterCorpIds.filter((id) => id !== null))
-
-			// Check if any of these corps are managed and user has a role
-			for (const corpId of uniqueCorpIds) {
-				const managedCorp = managedCorps.find((c) => c.corporationId === corpId)
-				if (managedCorp) {
-					// Found a managed corp - quick check for any role
 					const corpStub = getStub<Rpc.Provider<EveCorporationData>>(
 						c.env.EVE_CORPORATION_DATA,
-						corpId
+						'default'
 					)
-					try {
-						const [corpInfo, directors] = await Promise.all([
-							withRpcResult(corpStub.getCorporationInfo(corpId), (result) =>
-								result ? { ceoId: result.ceoId } : null
-							),
-							withRpcResult(corpStub.getDirectors(corpId), (result) =>
-								result.map((director) => ({ characterId: director.characterId }))
-							),
-						])
-
-						// Check if any character is CEO or director
-						for (const char of characters) {
-							const isCeo = corpInfo && String(corpInfo.ceoId) === char.characterId
-							const matchedDirector = directors.find((d) => d.characterId === char.characterId)
-
-							if (isCeo) {
-								return c.json({ hasAccess: true })
-							}
-							if (matchedDirector) {
-								return c.json({ hasAccess: true })
+					await withRpcResult(
+						corpStub.getCorporationIdsByCharacterIds(missingCharacterIds),
+						(missingCorpMap) => {
+							for (const [characterId, corporationId] of Object.entries(missingCorpMap)) {
+								characterCorpMap.set(characterId, corporationId)
 							}
 						}
-					} catch {
-						continue
-					}
+					)
+				} catch {
+					// A missing fallback value only hides navigation until a later refresh.
 				}
 			}
 
-			// Also check if user has any HR roles
-			const hrStub = getStub<Rpc.Provider<Hr>>(c.env.HR, 'default')
-			try {
-				const hrCorpIds = await withRpcResult(hrStub.getUserHrCorporations(user.id), (result) => [
-					...result,
-				])
-				if (hrCorpIds.length > 0) {
-					return c.json({ hasAccess: true })
-				}
-			} catch {
-				// Ignore HR check failures
+			const characterIdsByCorp = new Map<string, Set<string>>()
+			for (const [characterId, corporationId] of characterCorpMap) {
+				const characterIds = characterIdsByCorp.get(corporationId) ?? new Set<string>()
+				characterIds.add(characterId)
+				characterIdsByCorp.set(corporationId, characterIds)
 			}
 
-			return c.json({ hasAccess: false })
+			const leadershipResults = await Promise.all(
+				managedCorps
+					.filter((corp) => characterIdsByCorp.has(corp.corporationId))
+					.map(async (corp) => {
+						try {
+							const corpStub = getStub<Rpc.Provider<EveCorporationData>>(
+								c.env.EVE_CORPORATION_DATA,
+								corp.corporationId
+							)
+							const [corpInfo, directors] = await Promise.all([
+								withRpcResult(corpStub.getCorporationInfo(corp.corporationId), (result) => result),
+								withRpcResult(corpStub.getDirectors(corp.corporationId), (result) => result),
+							])
+							const characterIds = characterIdsByCorp.get(corp.corporationId)!
+							const isLeader =
+								(characterIds.has(String(corpInfo?.ceoId)) ?? false) ||
+								directors.some((director) => characterIds.has(director.characterId))
+							return isLeader ? { isMemberCorporation: corp.isMemberCorporation } : null
+						} catch {
+							return null
+						}
+					})
+			)
+
+			const hasLeadershipAccess = leadershipResults.some(Boolean)
+			const hasMemberLeadershipAccess = leadershipResults.some(
+				(result) => result?.isMemberCorporation === true
+			)
+			const result = {
+				hasAccess: hasLeadershipAccess || hrCorpIds.length > 0,
+				hasLeadershipAccess,
+				hasMemberLeadershipAccess,
+			}
+			await cacheJson(cacheKey, result, 300)
+			return c.json(result)
 		} catch (error) {
 			logger.error('Error checking corporation access:', error)
-			return c.json({ hasAccess: false })
+			return c.json(noAccess)
 		}
 	}
 )

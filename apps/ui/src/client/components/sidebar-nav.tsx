@@ -33,7 +33,7 @@ import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
 import { hasAnyStructurePermission } from '@repo/groups'
 
 import { hasBillingIssuerPermission } from '@/features/bills/issuer-access'
-import { useCorporationAccess, useHasCorporationAccess } from '@/features/corporations'
+import { useHasCorporationAccess } from '@/features/corporations'
 import { hasExplicitMemberCorporationHrRole, useHrAccessibleCorporations } from '@/features/hr'
 import { useMoonScanPermissions } from '@/features/moon-scan/permissions'
 import { canAccessMumble } from '@/features/mumble/access'
@@ -78,8 +78,14 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 	const { user } = useAuth()
 	const { t } = useAppTranslation()
 	const logout = useLogout()
-	const { data: corporationAccess } = useHasCorporationAccess()
-	const { data: leadershipCorporationAccess } = useCorporationAccess()
+	const [navigationCapabilitiesReady, setNavigationCapabilitiesReady] = useState(false)
+	useEffect(() => {
+		const timeout = window.setTimeout(() => setNavigationCapabilitiesReady(true), 250)
+		return () => window.clearTimeout(timeout)
+	}, [])
+	const { data: corporationAccess } = useHasCorporationAccess({
+		enabled: navigationCapabilitiesReady,
+	})
 	const { permissions, hasAnyPermission } = useUserPermissions()
 	const isSiteAdmin = user?.is_admin === true
 	const isAuditor = hasAnyPermission('urn:hr:auditor')
@@ -88,12 +94,18 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 	const canIssueBills = hasBillingIssuerPermission(permissions, isSiteAdmin)
 	const canSeeBills = canSeeAllianceMemberNav || canIssueBills
 	const { data: hrCorporations } = useHrAccessibleCorporations({
-		enabled: canSeeAllianceMemberNav,
+		enabled: canSeeAllianceMemberNav && navigationCapabilitiesReady,
 	})
-	const { data: structureAccess } = useStructureAccess({ enabled: Boolean(user) })
+	const { data: structureAccess } = useStructureAccess({
+		enabled: Boolean(user) && navigationCapabilitiesReady,
+	})
 	const moonScanPermissions = useMoonScanPermissions()
-	const { data: invitations } = usePendingInvitations({ enabled: canSeeAllianceMemberNav })
-	const { isEnabled: isMumbleFeatureEnabled } = useMumbleFeatureEnabled()
+	const { data: invitations } = usePendingInvitations({
+		enabled: canSeeAllianceMemberNav && navigationCapabilitiesReady,
+	})
+	const { isEnabled: isMumbleFeatureEnabled } = useMumbleFeatureEnabled({
+		enabled: navigationCapabilitiesReady,
+	})
 	const canViewStructures =
 		isSiteAdmin ||
 		hasAnyStructurePermission(permissions) ||
@@ -104,7 +116,7 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 	const { data: sidebarExternalLinks } = useQuery({
 		queryKey: ['sidebar', 'external-links'],
 		queryFn: () => api.getSidebarExternalLinks(),
-		enabled: canSeeAllianceMemberNav,
+		enabled: canSeeAllianceMemberNav && navigationCapabilitiesReady,
 		staleTime: 1000 * 60 * 5,
 		gcTime: 1000 * 60 * 5,
 	})
@@ -177,12 +189,7 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 	const pendingCount = invitations?.length || 0
 	const mainCharacter = user?.characters.find((c) => c.characterId === user.mainCharacterId)
 	const canSeeMumble = isMumbleFeatureEnabled && canAccessMumble(user)
-	const hasFleetStatsAccess =
-		leadershipCorporationAccess?.corporations.some(
-			(corp) =>
-				corp.isMemberCorporation &&
-				(corp.userRole === 'CEO' || corp.userRole === 'Director' || corp.userRole === 'admin')
-		) ?? false
+	const hasFleetStatsAccess = corporationAccess?.hasMemberLeadershipAccess ?? false
 	const canSeeFleetTrackingList =
 		isSiteAdmin ||
 		hasAnyPermission('urn:fleet-tracking:create') ||
@@ -292,13 +299,9 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 		const hasMemberCorporationAccess =
 			isSiteAdmin ||
 			isAuditor ||
-			(leadershipCorporationAccess?.corporations ?? []).some(
-				(corporation) => corporation.isMemberCorporation
-			) ||
+			corporationAccess?.hasMemberLeadershipAccess === true ||
 			(hrCorporations ?? []).some((corporation) => corporation.isMemberCorporation)
-		const hasMemberLeadershipAccess = (leadershipCorporationAccess?.corporations ?? []).some(
-			(corporation) => corporation.isMemberCorporation
-		)
+		const hasMemberLeadershipAccess = corporationAccess?.hasMemberLeadershipAccess === true
 		const canSeeLegacyApplications =
 			isSiteAdmin || isAuditor || hasExplicitMemberCorporationHrRole(hrCorporations)
 		const isHrOnlyUser =
@@ -540,9 +543,7 @@ export function SidebarNav({ onNavigate, isSidebarOpen = true, onToggleSidebar }
 			(permissions.some(
 				(permission) => extractCorporationIdFromTaxViewerScopedUrn(permission.urn) !== null
 			) ||
-				(leadershipCorporationAccess?.corporations ?? []).some(
-					(corporation) => corporation.userRole === 'CEO' || corporation.userRole === 'Director'
-				))
+				corporationAccess?.hasLeadershipAccess === true)
 		const canAuditTaxFeature =
 			canSeeAllianceMemberNav &&
 			(isSiteAdmin || hasAnyPermission('urn:tax:auditor', 'urn:tax:admin'))

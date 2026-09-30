@@ -57,7 +57,7 @@ function canUseCorporationAccess(
  * Hook for quick check if user has any corporation access (for navigation)
  * This is optimized for speed and should be used in the sidebar
  */
-export function useHasCorporationAccess() {
+export function useHasCorporationAccess(options?: { enabled?: boolean }) {
 	const { user } = useAuth()
 	const userId = user?.id ?? null
 	const hasCorporationAccessCapability = canUseCorporationAccess(user)
@@ -69,7 +69,7 @@ export function useHasCorporationAccess() {
 		gcTime: 1000 * 60 * 10, // 10 minutes
 		// The API is alliance-member scoped. Do not probe it for authenticated
 		// sessions that cannot use the surrounding corporation features.
-		enabled: userId !== null && hasCorporationAccessCapability,
+		enabled: (options?.enabled ?? true) && userId !== null && hasCorporationAccessCapability,
 	})
 }
 

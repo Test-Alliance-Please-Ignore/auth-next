@@ -14,8 +14,6 @@ export interface User {
 	}>
 	is_admin: boolean
 	roles?: string[]
-	permissions?: UserPermission[]
-	discordLinked?: boolean
 	discord?: {
 		userId: string
 		username: string
@@ -24,17 +22,15 @@ export interface User {
 		authRevokedAt: string | null
 		lastSuccessfulAuth: string | null
 	}
-	legacyAuth?: {
-		userId: string | null
-		username: string | null
-		isLinked: boolean
-	}
 }
 
 interface SessionResponse {
 	authenticated: boolean
 	user: User | null
-	permissions?: UserPermission[]
+}
+
+interface PermissionsResponse {
+	permissions: UserPermission[]
 }
 
 /**
@@ -47,6 +43,14 @@ export function useAuth() {
 		retry: false,
 		staleTime: 1000 * 60 * 5, // 5 minutes
 	})
+	const permissionsQuery = useQuery<PermissionsResponse>({
+		queryKey: ['auth', 'permissions', data?.user?.id],
+		queryFn: () => apiClient.get<PermissionsResponse>('/auth/permissions'),
+		enabled: data?.authenticated === true,
+		retry: 2,
+		staleTime: 1000 * 60 * 5,
+	})
+	const permissions = permissionsQuery.data?.permissions ?? []
 
 	const user =
 		data?.user == null
@@ -54,14 +58,15 @@ export function useAuth() {
 			: {
 					...data.user,
 					roles: data.user.roles ?? [],
-					permissions: data.permissions ?? [],
+					permissions,
 				}
 
 	return {
 		user,
-		permissions: data?.permissions ?? [],
+		permissions,
 		isAuthenticated: data?.authenticated ?? false,
 		isLoading,
+		isPermissionsLoading: data?.authenticated === true && permissionsQuery.isLoading,
 		error,
 		refetch,
 	}
@@ -77,10 +82,7 @@ export function useLogout() {
 		mutationFn: () => apiClient.post('/auth/logout'),
 		onSuccess: () => {
 			// Clear auth cache
-			queryClient.setQueryData(['auth', 'session'], {
-				authenticated: false,
-				user: null,
-			})
+			queryClient.removeQueries({ queryKey: ['auth'] })
 			// Redirect to landing page
 			window.location.href = '/'
 		},

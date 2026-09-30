@@ -996,14 +996,6 @@ export class CoreDO extends DurableObject<Env> implements Core {
 			inserted += 1
 		}
 
-		await db
-			.update(users)
-			.set({
-				legacyAuthUserId: input.legacyAuthUserId,
-				updatedAt: new Date(),
-			})
-			.where(eq(users.id, input.modernUserId))
-
 		// Ensure newly imported characters are hydrated with current public/affiliation
 		// data immediately so HR/admin views don't show stale "unknown" corp/alliance.
 		if (inserted > 0) {
@@ -1091,21 +1083,19 @@ export class CoreDO extends DurableObject<Env> implements Core {
 			legacyActorIds.length > 0
 				? await legacyStub.resolveLegacyActorCharacterNames(legacyActorIds)
 				: {}
-		const modernUsersByLegacyId =
+		const modernUserByLegacyId =
 			legacyActorIds.length > 0
+				? await legacyStub.resolveLegacyActorModernUsers(legacyActorIds)
+				: {}
+		const modernUserIds = [...new Set(Object.values(modernUserByLegacyId))]
+		const modernUsers =
+			modernUserIds.length > 0
 				? await db.query.users.findMany({
-						where: inArray(users.legacyAuthUserId, legacyActorIds),
-						columns: { id: true, legacyAuthUserId: true, mainCharacterId: true },
+						where: inArray(users.id, modernUserIds),
+						columns: { id: true, mainCharacterId: true },
 					})
 				: []
-		const modernUserByLegacyId = new Map(
-			modernUsersByLegacyId
-				.filter((row): row is typeof row & { legacyAuthUserId: string } =>
-					Boolean(row.legacyAuthUserId)
-				)
-				.map((row) => [row.legacyAuthUserId, row])
-		)
-		const modernUserIds = [...new Set(modernUsersByLegacyId.map((row) => row.id))]
+		const modernUserById = new Map(modernUsers.map((row) => [row.id, row]))
 		const primaryChars =
 			modernUserIds.length > 0
 				? await db.query.userCharacters.findMany({
@@ -1122,15 +1112,15 @@ export class CoreDO extends DurableObject<Env> implements Core {
 		let failed = 0
 		for (const note of input.notes) {
 			const attributedModernUser = note.legacyCreatedByUserId
-				? modernUserByLegacyId.get(note.legacyCreatedByUserId)
+				? modernUserByLegacyId[note.legacyCreatedByUserId]
 				: undefined
 			const attributedPrimary = attributedModernUser
-				? (primaryCharByUserId.get(attributedModernUser.id) ?? null)
+				? (primaryCharByUserId.get(attributedModernUser) ?? null)
 				: null
-			const authorUserId = attributedModernUser?.id ?? actorUserId ?? input.modernUserId
+			const authorUserId = attributedModernUser ?? actorUserId ?? input.modernUserId
 			const authorCharacterId =
 				attributedPrimary?.characterId ??
-				attributedModernUser?.mainCharacterId ??
+				(attributedModernUser ? modernUserById.get(attributedModernUser)?.mainCharacterId : null) ??
 				importerCharacterId ??
 				null
 			const legacyAuthorCharacterName = note.legacyCreatedByUserId
@@ -1158,7 +1148,7 @@ export class CoreDO extends DurableObject<Env> implements Core {
 						legacyNoteActorResolution: attributedModernUser
 							? 'resolved_modern_user'
 							: 'unresolved_importer_fallback',
-						legacyNoteActorResolvedUserId: attributedModernUser?.id ?? null,
+						legacyNoteActorResolvedUserId: attributedModernUser ?? null,
 						...(note.metadata ?? {}),
 						visibility: 'hr',
 					}

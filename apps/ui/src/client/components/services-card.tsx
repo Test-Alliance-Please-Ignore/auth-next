@@ -40,8 +40,8 @@ export function ServicesCard() {
 				<CardContent>
 					<div className="space-y-4">
 						<Skeleton className="h-24 rounded-lg" />
-						{[1, 2, 3].map((i) => (
-							<Skeleton key={i} className="h-20 rounded-lg" />
+						{[1, 2, 3].map((index) => (
+							<Skeleton key={index} className="h-20 rounded-lg" />
 						))}
 					</div>
 				</CardContent>
@@ -52,37 +52,35 @@ export function ServicesCard() {
 	if (!canSeeMumbleService) return null
 
 	return (
-		<>
-			<Card variant="elevated">
-				<CardHeader>
-					<CardTitle className="text-xl md:text-2xl">{t('services.title')}</CardTitle>
-					<CardDescription>{t('services.credentialsDescription')}</CardDescription>
-				</CardHeader>
-				<CardContent>
-					<div className="space-y-4">
-						{hasMumbleAccount ? (
-							<MumbleServiceCard
-								account={mumbleAccount!.account!}
-								connection={mumbleAccount?.connection ?? null}
-							/>
-						) : null}
-						{!hasMumbleAccount && !isMumbleLoading && !mumbleLoadError ? (
-							<div className="rounded-lg border border-border/50 bg-muted/20 p-4">
-								<div className="flex items-center gap-3">
-									<div className="flex items-center justify-center w-12 h-12 rounded-full bg-muted">
-										<Server className="h-6 w-6 text-muted-foreground" />
-									</div>
-									<div>
-										<CardTitle className="text-lg">{t('services.emptyTitle')}</CardTitle>
-										<CardDescription>{t('services.emptyDescription')}</CardDescription>
-									</div>
+		<Card variant="elevated">
+			<CardHeader>
+				<CardTitle className="text-xl md:text-2xl">{t('services.title')}</CardTitle>
+				<CardDescription>{t('services.credentialsDescription')}</CardDescription>
+			</CardHeader>
+			<CardContent>
+				<div className="space-y-4">
+					{hasMumbleAccount ? (
+						<MumbleServiceCard
+							account={mumbleAccount!.account!}
+							connection={mumbleAccount?.connection ?? null}
+						/>
+					) : null}
+					{!hasMumbleAccount && !isMumbleLoading && !mumbleLoadError ? (
+						<div className="rounded-lg border border-border/50 bg-muted/20 p-4">
+							<div className="flex items-center gap-3">
+								<div className="flex items-center justify-center w-12 h-12 rounded-full bg-muted">
+									<Server className="h-6 w-6 text-muted-foreground" />
+								</div>
+								<div>
+									<CardTitle className="text-lg">{t('services.emptyTitle')}</CardTitle>
+									<CardDescription>{t('services.emptyDescription')}</CardDescription>
 								</div>
 							</div>
-						) : null}
-					</div>
-				</CardContent>
-			</Card>
-		</>
+						</div>
+					) : null}
+				</div>
+			</CardContent>
+		</Card>
 	)
 }
 

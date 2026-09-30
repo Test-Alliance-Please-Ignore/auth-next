@@ -131,12 +131,6 @@ export type Env = SharedHonoEnv & {
 	MUMBLE_PORT: string
 	/** Discord application public key used to verify interaction signatures */
 	DISCORD_PUBLIC_KEY?: string
-	/** Legacy Auth OAuth Client ID (set as Wrangler secret) */
-	LEGACY_AUTH_CLIENT_ID: string
-	/** Legacy Auth OAuth Client Secret (set as Wrangler secret) */
-	LEGACY_AUTH_CLIENT_SECRET: string
-	/** Legacy Auth OAuth Callback URL */
-	LEGACY_AUTH_CALLBACK_URL: string
 	/** IP Address Hash Secret */
 	IP_ADDRESS_HASH_SECRET: string
 	/** Optional comma-separated Discord user IDs to exclude from member audits */
