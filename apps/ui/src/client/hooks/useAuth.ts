@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { apiClient, type UserPermission } from '@/lib/api'
+import { apiClient } from '@/lib/api'
+
+import type { UserPermission } from '@/lib/api'
 
 export interface User {
 	id: string
@@ -13,6 +15,7 @@ export interface User {
 	is_admin: boolean
 	roles?: string[]
 	permissions?: UserPermission[]
+	discordLinked?: boolean
 	discord?: {
 		userId: string
 		username: string
@@ -52,7 +55,7 @@ export function useAuth() {
 					...data.user,
 					roles: data.user.roles ?? [],
 					permissions: data.permissions ?? [],
-			  }
+				}
 
 	return {
 		user,

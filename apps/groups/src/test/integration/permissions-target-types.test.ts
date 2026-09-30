@@ -8,10 +8,10 @@ import type { Env } from '../../context'
 
 const testEnv = env as unknown as Env
 
-const ADMIN_USER_ID = 'admin-user-123'
-const OWNER_USER_ID = 'owner-user-1'
-const GROUP_ADMIN_USER_ID = 'group-admin-user-1'
-const MEMBER_USER_ID = 'member-user-1'
+const ADMIN_USER_ID = '00000000-0000-4000-8000-000000000011'
+const OWNER_USER_ID = '00000000-0000-4000-8000-000000000012'
+const GROUP_ADMIN_USER_ID = '00000000-0000-4000-8000-000000000013'
+const MEMBER_USER_ID = '00000000-0000-4000-8000-000000000014'
 
 function uniqueId(prefix: string): string {
 	return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
@@ -184,11 +184,11 @@ describe('Groups permissions targetType behavior', () => {
 		// Group member permissions are scoped by group and should honor targetType rules.
 		const groupAMemberPerms = await stub.getGroupMemberPermissions(groupIdA)
 		const groupBMemberPerms = await stub.getGroupMemberPermissions(groupIdB)
-		expect(groupAMemberPerms.userPermissions[MEMBER_USER_ID]?.some((p) => p.urn === permission.urn)).toBe(
-			true
-		)
-		expect(groupBMemberPerms.userPermissions[MEMBER_USER_ID]?.some((p) => p.urn === permission.urn)).toBe(
-			false
-		)
+		expect(
+			groupAMemberPerms.userPermissions[MEMBER_USER_ID]?.some((p) => p.urn === permission.urn)
+		).toBe(true)
+		expect(
+			groupBMemberPerms.userPermissions[MEMBER_USER_ID]?.some((p) => p.urn === permission.urn)
+		).toBe(false)
 	})
 })

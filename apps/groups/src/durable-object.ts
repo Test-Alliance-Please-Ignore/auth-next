@@ -5,6 +5,7 @@ import { discordRoles, discordServers } from '@repo/core-db-schema'
 import * as coreSchema from '@repo/core-db-schema'
 import { and, createDbClient, eq, ilike, inArray, isNull, sql } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
+import { RoleAttachmentType } from '@repo/groups'
 import { logger } from '@repo/hono-helpers'
 
 import { createDb } from './db'
@@ -160,6 +161,10 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 		string,
 		{ data: UserPermission[]; expires: number }
 	>()
+	// This cache is owned by the singleton Groups DO. Unlike Core's worker-local
+	// caches, every role mutation and every read are serialized through this instance,
+	// so invalidation is immediately visible to every Core worker isolate.
+	private userRoleAttachmentsCache = new Map<string, { data: RoleAttachment[]; expires: number }>()
 	private readonly CACHE_TTL = 5 * 60 * 1000 // 5 minutes
 	private readonly MAX_CACHE_ENTRIES = 1000
 
@@ -3707,11 +3712,15 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 	}
 
 	async createRole(request: CreateRoleRequest): Promise<Role> {
-		return this.roleService.createRole(request)
+		const role = await this.roleService.createRole(request)
+		this.invalidateAllUserRoleAttachmentsCache()
+		return role
 	}
 
 	async batchCreateRoles(request: BatchCreateRolesRequest): Promise<Role[]> {
-		return this.roleService.batchCreateRoles(request)
+		const roles = await this.roleService.batchCreateRoles(request)
+		this.invalidateAllUserRoleAttachmentsCache()
+		return roles
 	}
 
 	async getRole(roleId: string): Promise<Role | null> {
@@ -3727,22 +3736,49 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 	}
 
 	async attachRoleTo(request: AttachRoleToRequest): Promise<RoleAttachment> {
-		return this.roleService.attachRoleTo(request)
+		const attachment = await this.roleService.attachRoleTo(request)
+		this.invalidateUserRoleAttachmentsCacheForRequest(request)
+		return attachment
 	}
 
 	async batchAttachRolesTo(request: BatchAttachRoleToRequest): Promise<RoleAttachment[]> {
-		return this.roleService.batchAttachRolesTo(request)
+		const attachments = await this.roleService.batchAttachRolesTo(request)
+		for (const role of request.roles) {
+			this.invalidateUserRoleAttachmentsCacheForRequest(role)
+		}
+		return attachments
 	}
 
 	async detachRoleFrom(request: DetachRoleFromRequest): Promise<boolean> {
-		return this.roleService.detachRoleFrom(request)
+		const detached = await this.roleService.detachRoleFrom(request)
+		this.invalidateUserRoleAttachmentsCacheForRequest(request)
+		return detached
 	}
 
 	async deleteRoleAttachment(attachmentId: string): Promise<boolean> {
-		return this.roleService.deleteRoleAttachment(attachmentId)
+		const deleted = await this.roleService.deleteRoleAttachment(attachmentId)
+		// The attachment ID does not identify its target user without another query.
+		// Clearing this bounded cache preserves immediate revocation semantics.
+		if (deleted) this.invalidateAllUserRoleAttachmentsCache()
+		return deleted
 	}
 
 	async getRolesFor(request: GetRolesForRequest): Promise<RoleAttachment[]> {
+		if (
+			request.attachedToType === RoleAttachmentType.USER &&
+			request.attachedToId &&
+			Object.keys(request).length === 2
+		) {
+			const cached = this.userRoleAttachmentsCache.get(request.attachedToId)
+			if (cached && cached.expires > Date.now()) {
+				return cached.data
+			}
+
+			const attachments = await this.roleService.getRolesFor(request)
+			this.setCacheEntry(this.userRoleAttachmentsCache, request.attachedToId, attachments)
+			return attachments
+		}
+
 		return this.roleService.getRolesFor(request)
 	}
 
@@ -3753,7 +3789,9 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 	async replaceCoreMembershipRolesForUser(
 		request: ReplaceCoreMembershipRolesForUserRequest
 	): Promise<ReplaceCoreMembershipRolesForUserResponse> {
-		return this.roleService.replaceCoreMembershipRolesForUser(request)
+		const result = await this.roleService.replaceCoreMembershipRolesForUser(request)
+		this.invalidateUserRoleAttachmentsCache(request.userId)
+		return result
 	}
 
 	/**
@@ -3781,6 +3819,22 @@ export class GroupsDO extends DurableObject<Env> implements Groups {
 	 */
 	private invalidateUserPermissionsCache(userId: string): void {
 		this.permissionsCache.delete(userId)
+	}
+
+	private invalidateUserRoleAttachmentsCache(userId: string): void {
+		this.userRoleAttachmentsCache.delete(userId)
+	}
+
+	private invalidateUserRoleAttachmentsCacheForRequest(
+		request: Pick<AttachRoleToRequest, 'attachedToId' | 'attachedToType'>
+	): void {
+		if (request.attachedToType === RoleAttachmentType.USER) {
+			this.invalidateUserRoleAttachmentsCache(request.attachedToId)
+		}
+	}
+
+	private invalidateAllUserRoleAttachmentsCache(): void {
+		this.userRoleAttachmentsCache.clear()
 	}
 
 	/**

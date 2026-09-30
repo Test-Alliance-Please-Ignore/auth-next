@@ -9,7 +9,7 @@ if (process.env.CI || process.env.GITHUB_ACTIONS) {
 export default defineConfig({
 	plugins: [
 		cloudflareTest({
-			wrangler: { configPath: `${__dirname}/wrangler.jsonc` },
+			wrangler: { configPath: `${__dirname}/wrangler.test.jsonc` },
 			miniflare: {
 				bindings: {
 					ENVIRONMENT: 'VITEST',

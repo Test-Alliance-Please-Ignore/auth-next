@@ -17,7 +17,8 @@ import type {
  * Shared caching utility for Groups Durable Object operations
  *
  * Reduces RPC calls by caching frequently accessed data with appropriate TTLs.
- * All caches are in-memory and scoped to the worker instance.
+ * All Core caches are in-memory and scoped to the worker instance. User role
+ * attachments are the exception: their cache is authoritatively owned by Groups DO.
  */
 
 // Cache TTLs (in milliseconds)
@@ -25,7 +26,6 @@ const PERMISSIONS_TTL = 15 * 1000 // 15 seconds
 const MEMBERSHIPS_TTL = 30 * 1000 // 30 seconds
 const GROUPS_TTL = 30 * 1000 // 30 seconds
 const CHARACTER_PERMISSIONS_TTL = 15 * 1000 // 15 seconds
-const ROLES_TTL = 30 * 1000 // 30 seconds
 const GLOBAL_PERMISSIONS_TTL = 5 * 60 * 1000 // 5 minutes
 
 // Permission cache: userId -> UserPermission[]
@@ -39,9 +39,6 @@ const groupsCache = new TimeCache<GroupWithDetails | null>(GROUPS_TTL)
 
 // Character permissions cache: characterId -> UserPermission[]
 const characterPermissionsCache = new TimeCache<UserPermission[]>(CHARACTER_PERMISSIONS_TTL)
-
-// Roles cache: userId -> RoleAttachment[]
-const rolesCache = new TimeCache<RoleAttachment[]>(ROLES_TTL)
 
 // Global permissions cache (single key)
 const globalPermissionsCache = new TimeCache<PermissionWithDetails[]>(GLOBAL_PERMISSIONS_TTL)
@@ -131,27 +128,29 @@ export async function getCachedCharacterPermissions(
 }
 
 /**
- * Get cached user roles or fetch from Groups DO
+ * Get user roles from the authoritative Groups DO cache.
+ *
+ * Role attachments are intentionally not cached in Core Worker isolates: a group
+ * mutation could otherwise leave another isolate serving stale grants or revocations.
+ * The Groups singleton owns the five-minute cache and synchronously invalidates it
+ * beside every role attachment mutation.
  */
 export async function getCachedUserRoles(
 	env: GroupsEnv,
 	userId: string
 ): Promise<RoleAttachment[]> {
-	const cacheKey = `roles:${userId}`
-	return rolesCache.getOrSet(cacheKey, async () => {
-		const groupsStub = getStub<Groups>(env.GROUPS, 'default')
-		return withRpcResult(
-			groupsStub.getRolesFor({
-				attachedToType: 'user' as RoleAttachmentType,
-				attachedToId: userId,
-			}),
-			(result) =>
-				result.map((attachment) => ({
-					...attachment,
-					role: { ...attachment.role },
-				}))
-		)
-	})
+	const groupsStub = getStub<Groups>(env.GROUPS, 'default')
+	return withRpcResult(
+		groupsStub.getRolesFor({
+			attachedToType: 'user' as RoleAttachmentType,
+			attachedToId: userId,
+		}),
+		(result) =>
+			result.map((attachment) => ({
+				...attachment,
+				role: { ...attachment.role },
+			}))
+	)
 }
 
 /**
@@ -179,18 +178,9 @@ export async function clearUserCache(
 ): Promise<void> {
 	permissionsCache.delete(`permissions:${userId}`)
 	membershipsCache.delete(`memberships:${userId}`)
-	rolesCache.delete(`roles:${userId}`)
 	await clearUserBillScopeCache(userId, billingScopeCache)
 	// Note: We can't efficiently clear all group caches for a user without tracking keys
 	// Group caches will expire naturally based on TTL
-}
-
-/**
- * Clear roles cache for a specific user
- * Call this when user roles change
- */
-export function clearUserRolesCache(userId: string): void {
-	rolesCache.delete(`roles:${userId}`)
 }
 
 /**
@@ -212,7 +202,6 @@ export async function clearAllCaches(billingScopeCache?: DurableObjectNamespace)
 	membershipsCache.clear()
 	groupsCache.clear()
 	characterPermissionsCache.clear()
-	rolesCache.clear()
 	globalPermissionsCache.clear()
 	await clearUserBillScopeCache(undefined, billingScopeCache)
 }
