@@ -36,7 +36,7 @@ vi.mock('@/hooks/usePageTitle', () => ({
 	},
 }))
 let client: QueryClient
-const listKey = broadcastKeys.broadcastsPage(undefined, undefined, true, 25, 0, undefined)
+const listKey = broadcastKeys.broadcastsPage(undefined, undefined, true, 5, 0, undefined)
 function renderUI(children: ReactNode, path = '/broadcasts') {
 	return renderToStaticMarkup(
 		<QueryClientProvider client={client}>
@@ -74,16 +74,16 @@ afterEach(async () => {
 
 describe('member broadcast history and detail localization', () => {
 	it.each([
-		['en', 'My Broadcasts', 'Draft', 'Sent', '1–25 of 1,234 broadcasts', 'Add addendum'],
+		['en', 'My Broadcasts', 'Draft', 'Sent', '1–5 of 1,234 broadcasts', 'Add addendum'],
 		[
 			'de',
 			'Meine Broadcasts',
 			'Entwurf',
 			'Gesendet',
-			'Broadcasts: 1–25 von 1.234',
+			'Broadcasts: 1–5 von 1.234',
 			'Nachtrag hinzufügen',
 		],
-		['ko', '내 방송', '초안', '전송됨', '방송 1,234 · 1–25', '추가 내용 덧붙이기'],
+		['ko', '내 방송', '초안', '전송됨', '방송 1,234 · 1–5', '추가 내용 덧붙이기'],
 	] as const)(
 		'renders list and canonical routes in %s',
 		async (locale, title, draft, sent, range, addendum) => {

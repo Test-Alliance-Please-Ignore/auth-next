@@ -35,15 +35,15 @@ import toast from '@/lib/toast'
 import { AddBroadcastAddendumDialog } from './add-broadcast-addendum-dialog'
 import { RescindBroadcastDialog } from './rescind-broadcast-dialog'
 
-import type { DataTableColumn } from '@/components/data-table'
+import type { DataTableColumn, DataTablePagination } from '@/components/data-table'
 import type { Broadcast } from '@/lib/api'
 
 export default function BroadcastsPage() {
 	const { t } = useAppTranslation()
 	usePageTitle(t('broadcasts.title'))
-	const pageSize = 25
 	const navigate = useNavigate()
-	const [page, setPage] = useState(0)
+	const [pagination, setPagination] = useState<DataTablePagination>({ pageIndex: 0, pageSize: 5 })
+	const { pageIndex: page, pageSize } = pagination
 	const { user, permissions } = useAuth()
 	const {
 		data: broadcastsPage,
@@ -68,7 +68,9 @@ export default function BroadcastsPage() {
 	const maxPage = Math.max(Math.ceil(rowCount / pageSize) - 1, 0)
 	useEffect(() => {
 		// A new page has no cached count while loading; clamp only against a received page.
-		if (broadcastsPage && page > maxPage) setPage(maxPage)
+		if (broadcastsPage && page > maxPage) {
+			setPagination((current) => ({ ...current, pageIndex: maxPage }))
+		}
 	}, [broadcastsPage, page, maxPage])
 
 	const handleSendNow = async (broadcast: Broadcast) => {
@@ -310,8 +312,8 @@ export default function BroadcastsPage() {
 								rowCount={rowCount}
 								itemLabel={t('broadcasts.item', { count: rowCount })}
 								pagination={{ pageIndex: page, pageSize }}
-								onPaginationChange={(next) => setPage(next.pageIndex)}
-								pageSizeOptions={[pageSize]}
+								onPaginationChange={setPagination}
+								pageSizeOptions={[5, 25]}
 								paginationPosition="bottom"
 							/>
 						</CardContent>
