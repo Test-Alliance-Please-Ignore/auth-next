@@ -20,11 +20,12 @@ import type { App, SessionUser } from '../context'
 
 const SESSION_ACTIVITY_UPDATE_INTERVAL_MS = 60_000
 
-/** Public image requests do not need session resolution or its RPC lookups. */
+/** Routes that never consume session context do not need session resolution or its RPC lookups. */
 export function shouldBypassSessionMiddleware(pathname: string): boolean {
 	return (
 		pathname === '/images' ||
 		pathname.startsWith('/images/') ||
+		pathname === '/api/flags' ||
 		pathname === '/api/internal/member-refresh-tokens' ||
 		pathname.startsWith('/api/internal/member-refresh-tokens/')
 	)

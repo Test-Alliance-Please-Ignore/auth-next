@@ -4,7 +4,7 @@ import { api } from '@/lib/api'
 
 const flagsQueryKey = ['feature-flags'] as const
 
-export function useFeatureFlags() {
+export function useFeatureFlags(options?: { enabled?: boolean }) {
 	return useQuery({
 		queryKey: flagsQueryKey,
 		queryFn: () => api.getFeatureFlags(),
@@ -12,6 +12,7 @@ export function useFeatureFlags() {
 		// Keep the response shape stable while loading. Consumers that gate routes
 		// must also honor isPlaceholderData before treating a flag as resolved.
 		placeholderData: {} as Record<string, boolean>,
+		enabled: options?.enabled ?? true,
 	})
 }
 

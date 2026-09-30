@@ -5,7 +5,12 @@
  */
 import type { DurableObject } from 'cloudflare:workers'
 
-export type LegacyMigrationStatus = 'pending' | 'partially_applied' | 'applied' | 'dismissed' | 'error'
+export type LegacyMigrationStatus =
+	| 'pending'
+	| 'partially_applied'
+	| 'applied'
+	| 'dismissed'
+	| 'error'
 
 export interface LegacyMigrationQueueItem {
 	id: string
@@ -85,6 +90,7 @@ export interface LegacyHistoryEvent {
 
 export interface Legacy extends DurableObject {
 	resolveLegacyActorCharacterNames(legacyAuthUserIds: string[]): Promise<Record<string, string>>
+	resolveLegacyActorModernUsers(legacyAuthUserIds: string[]): Promise<Record<string, string>>
 	listMigrations(filters: {
 		page: number
 		pageSize: number
@@ -120,7 +126,11 @@ export interface Legacy extends DurableObject {
 		payload: { decision: 'accept' | 'reject' | 'needs_review'; note?: string },
 		actorUserId?: string | null
 	): Promise<{ item: LegacyMigrationQueueItem } | null>
-	recheckUser(modernUserId: string, actorUserId?: string, options?: { force?: boolean }): Promise<{
+	recheckUser(
+		modernUserId: string,
+		actorUserId?: string,
+		options?: { force?: boolean }
+	): Promise<{
 		ok: boolean
 		modernUserId: string
 		legacyAuthUserIds?: string[]

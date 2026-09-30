@@ -67,8 +67,8 @@ beforeEach(() => {
 	client.setQueryData(['auth', 'session'], {
 		authenticated: true,
 		user: applicant,
-		permissions: [],
 	})
+	client.setQueryData(['auth', 'permissions', applicant.id], { permissions: [] })
 	client.setQueryData(listKey, { rows: [memberBill, memberGroupBill], rowCount: 1234 })
 	client.setQueryData(userBillsKeys.detail(memberBill.id), memberBill)
 })
@@ -179,6 +179,8 @@ describe('member bills localization', () => {
 		client.setQueryData(['auth', 'session'], {
 			authenticated: true,
 			user: applicant,
+		})
+		client.setQueryData(['auth', 'permissions', applicant.id], {
 			permissions: [billingIssuerPermission],
 		})
 		expect(renderUI(<MyBillsPage />)).toContain('href="/bills/issue"')

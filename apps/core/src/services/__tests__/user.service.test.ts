@@ -35,8 +35,6 @@ describe('UserService.getUserProfile', () => {
 			mainCharacterId: '1001',
 			discordUserId: null,
 			is_admin: false,
-			legacyAuthUserId: null,
-			legacyAuthUserUsername: null,
 			createdAt: now,
 			updatedAt: now,
 		})
@@ -82,8 +80,6 @@ describe('UserService.getUserProfile', () => {
 			mainCharacterId: '1001',
 			discordUserId: null,
 			is_admin: false,
-			legacyAuthUserId: null,
-			legacyAuthUserUsername: null,
 			createdAt: now,
 			updatedAt: now,
 		})

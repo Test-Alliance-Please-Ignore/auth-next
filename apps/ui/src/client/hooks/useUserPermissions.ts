@@ -7,7 +7,7 @@ import { useAuth } from './useAuth'
  * Uses cached auth data for optimal performance
  */
 export function useUserPermissions() {
-	const { permissions, user, isLoading } = useAuth()
+	const { permissions, user, isLoading, isPermissionsLoading } = useAuth()
 
 	/**
 	 * Check if user has a specific permission by URN
@@ -53,7 +53,7 @@ export function useUserPermissions() {
 		hasPermission,
 		hasAnyPermission,
 		hasAllPermissions,
-		isLoading,
+		isLoading: isLoading || isPermissionsLoading,
 		isAdmin: user?.is_admin ?? false,
 	}
 }

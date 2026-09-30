@@ -1,5 +1,5 @@
 import { ROLE_CORE_ALLIANCE_MEMBER } from '@repo/core'
-import { and, asc, desc, eq, gt, ilike, inArray, or, sql } from '@repo/db-utils'
+import { and, asc, desc, eq, gt, inArray, or, sql } from '@repo/db-utils'
 import { getStub, withRpcResult } from '@repo/do-utils'
 import { RoleAttachmentType } from '@repo/groups'
 import { logger } from '@repo/hono-helpers'
@@ -87,7 +87,6 @@ export class CoreRpcService {
 
 		if (search && searchLike) {
 			const conditions: Array<SQL<unknown>> = [
-				and(ilike(users.legacyAuthUserUsername, searchLike), hasActiveCharacter) as SQL<unknown>,
 				eq(users.discordUserId, search),
 				sql<boolean>`exists (
 					select 1
@@ -207,7 +206,6 @@ export class CoreRpcService {
 				| 'user_id'
 				| 'discord_user_id'
 				| 'discord_username'
-				| 'legacy_auth_username'
 				| null = !search
 				? null
 				: isSearchUuid && user.id === search
@@ -222,7 +220,7 @@ export class CoreRpcService {
 									: matched.is_primary
 										? 'main_character_name'
 										: 'character_name'
-								: 'legacy_auth_username'
+								: null
 
 			return {
 				summary: {
@@ -302,7 +300,6 @@ export class CoreRpcService {
 
 		if (search && searchLike) {
 			const conditions = [
-				ilike(users.legacyAuthUserUsername, searchLike),
 				eq(users.discordUserId, search),
 				sql<boolean>`exists (
 					select 1
@@ -337,7 +334,6 @@ export class CoreRpcService {
 				mainCharacterId: users.mainCharacterId,
 				is_admin: users.is_admin,
 				discordUserId: users.discordUserId,
-				legacyAuthUserUsername: users.legacyAuthUserUsername,
 				createdAt: users.createdAt,
 				updatedAt: users.updatedAt,
 				mainCharacterName: userCharacters.characterName,
@@ -485,13 +481,6 @@ export class CoreRpcService {
 						return 'main_character_name'
 					}
 					return 'character_name'
-				}
-				if (
-					user.legacyAuthUserUsername &&
-					lowerSearch &&
-					user.legacyAuthUserUsername.toLowerCase().includes(lowerSearch)
-				) {
-					return 'legacy_auth_username'
 				}
 				return null
 			})()

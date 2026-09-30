@@ -42,15 +42,15 @@ interface DiscordCardProps {
 export function DiscordCard({ user }: DiscordCardProps) {
 	const { t } = useAppTranslation()
 	const { mutate: linkDiscord, isPending, error: linkError, reset } = useDiscordLink()
-	const hasLinkedDiscord = user.discordLinked ?? Boolean(user.discord)
 	const discordStatusQuery = useQuery({
 		queryKey: ['auth', 'discord-status', user.id],
 		queryFn: () => apiClient.get<{ discord: User['discord'] }>('/auth/discord-status'),
-		enabled: hasLinkedDiscord,
+		enabled: Boolean(user.id),
 		staleTime: 5 * 60 * 1000,
 		retry: false,
 	})
 	const discord = discordStatusQuery.data?.discord ?? user.discord
+	const hasLinkedDiscord = Boolean(discord)
 	const [isJoiningServers, setIsJoiningServers] = useState(false)
 	// Translate at render time so feedback also updates when the locale changes.
 	const [joinMessage, setJoinMessage] = useState<RefreshMessage | null>(null)

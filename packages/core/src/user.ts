@@ -66,8 +66,6 @@ export interface UserProfileDTO {
 	discordUserId: string | null
 	characters: UserCharacterDTO[]
 	is_admin: boolean
-	legacyAuthUserId: string | null
-	legacyAuthUserUsername: string | null
 	createdAt: Date
 	updatedAt: Date
 }

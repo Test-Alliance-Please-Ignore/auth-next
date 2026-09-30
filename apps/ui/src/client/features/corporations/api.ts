@@ -214,6 +214,8 @@ export interface CorporationScopedAccessResult {
  */
 export interface QuickAccessResult {
 	hasAccess: boolean
+	hasLeadershipAccess: boolean
+	hasMemberLeadershipAccess: boolean
 }
 
 // ============================================================================

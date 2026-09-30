@@ -7,7 +7,7 @@ import { assertEveCharacterId } from '@repo/eve-types'
 import { captureException, logger, toErrorMessage } from '@repo/hono-helpers'
 
 import { createDb } from '../db'
-import { mumbleTempops, oauthStates, userCharacters, users } from '../db/schema'
+import { mumbleTempops, oauthStates, userCharacters } from '../db/schema'
 import { waitUntilWithTelemetry } from '../lib/background-task'
 import { getDiscordStatus } from '../lib/discord-helpers'
 import { getCachedUserPermissions } from '../lib/groups-cache'
@@ -49,8 +49,7 @@ export function shouldUseSecureSessionCookie(c: Context<App>): boolean {
 /**
  * Flows that legitimately terminate at GET /auth/callback.
  *
- * oauth_states also holds 'legacy-auth' rows (redeemed at /auth/legacy-auth/callback) and
- * 'claim-main' tickets (redeemed at /auth/claim-main). Each callback accepts only its own
+ * oauth_states also holds 'claim-main' tickets (redeemed at /auth/claim-main). Each callback accepts only its own
  * flow types so a state minted for one flow cannot be replayed against another.
  */
 const CALLBACK_FLOW_TYPES = ['login', 'character', 'mumble-tempop'] as const
@@ -128,58 +127,40 @@ interface AuthSessionUserView {
 	}>
 	is_admin: boolean
 	roles: string[]
-	discordLinked: boolean
-	legacyAuth: {
-		userId: string | null
-		username: string | null
-		isLinked: boolean
-	}
 }
 
 export interface AuthSessionResponse {
 	authenticated: boolean
 	user: AuthSessionUserView | null
+}
+
+export interface AuthPermissionsResponse {
 	permissions: AuthSessionPermissionView[]
 }
 
-export function buildAuthSessionResponse(
-	user: AuthSessionUserView,
-	permissions: Array<{
-		permissionId?: string | null
-		urn: string
-		name: string
-		description: string | null
-	}>
-): AuthSessionResponse
-export function buildAuthSessionResponse(
-	user: null,
-	permissions?: Array<{
-		permissionId?: string | null
-		urn: string
-		name: string
-		description: string | null
-	}>
-): AuthSessionResponse
-export function buildAuthSessionResponse(
-	user: AuthSessionUserView | null,
-	permissions: Array<{
-		permissionId?: string | null
-		urn: string
-		name: string
-		description: string | null
-	}> = []
-): AuthSessionResponse {
+export function buildAuthSessionResponse(user: AuthSessionUserView | null): AuthSessionResponse {
 	if (!user) {
 		return {
 			authenticated: false,
 			user: null,
-			permissions: [],
 		}
 	}
 
 	return {
 		authenticated: true,
 		user,
+	}
+}
+
+export function buildAuthPermissionsResponse(
+	permissions: Array<{
+		permissionId?: string | null
+		urn: string
+		name: string
+		description: string | null
+	}>
+): AuthPermissionsResponse {
+	return {
 		permissions: permissions.map((permission) => ({
 			permissionId: permission.permissionId ?? null,
 			urn: permission.urn,
@@ -760,6 +741,11 @@ auth.get('/callback', async (c) => {
 		if (!user) {
 			return c.json({ error: 'User not found' }, 404)
 		}
+		const hrStub = getStub<Hr>(c.env.HR, 'default')
+		if (await hrStub.isUserBlacklisted(stateUserId)) {
+			await new SessionService(db).invalidateAllUserSessions(stateUserId)
+			return c.json({ error: 'Account suspended' }, 403)
+		}
 
 		// Check if character is already linked
 		const existingUser = await userService.getUserByCharacterId(characterId)
@@ -801,7 +787,6 @@ auth.get('/callback', async (c) => {
 		}
 
 		// SECURITY: Check if character ID or character name is blacklisted
-		const hrStub = getStub<Hr>(c.env.HR, 'default')
 		const charBlacklistTrigger = await findBlacklistedCharacterTrigger(
 			hrStub,
 			characterId,
@@ -1401,50 +1386,21 @@ auth.get('/session', async (c) => {
 		return c.json(buildAuthSessionResponse(null))
 	}
 
-	// Fetch user permissions (cached for 15 seconds)
-	const permissions = await getCachedUserPermissions(c.env, user.id)
-
-	// Reuse the full profile already loaded by session middleware.
-	// Fall back to a direct DB lookup only if something unexpected bypassed the middleware.
-	let profile = c.get('userProfile')
-	if (!profile) {
-		const db = c.get('db') || createDb(c.env.DATABASE_URL)
-		const userService = new UserService(db)
-
-		try {
-			profile = await userService.getUserProfile(user.id)
-		} catch (error) {
-			logger.error('[Auth Session] Failed to fetch user profile', {
-				userId: user.id,
-				error: error instanceof Error ? error.message : String(error),
-				stack: error instanceof Error ? error.stack : undefined,
-			})
-			throw error
-		}
-	}
-
-	// Build legacy auth status
-	const isLinked = !!(profile.legacyAuthUserId && profile.legacyAuthUserUsername)
-	const legacyAuth = {
-		userId: profile.legacyAuthUserId,
-		username: profile.legacyAuthUserUsername,
-		isLinked,
-	}
-
 	return c.json(
-		buildAuthSessionResponse(
-			{
-				id: user.id,
-				mainCharacterId: user.mainCharacterId,
-				characters: user.characters,
-				is_admin: user.is_admin,
-				roles: user.roles,
-				discordLinked: Boolean(user.discordUserId),
-				legacyAuth,
-			},
-			permissions
-		)
+		buildAuthSessionResponse({
+			id: user.id,
+			mainCharacterId: user.mainCharacterId,
+			characters: user.characters,
+			is_admin: user.is_admin,
+			roles: user.roles,
+		})
 	)
+})
+
+/** UI capability grants, loaded separately from the security-critical session identity. */
+auth.get('/permissions', requireAuth(), async (c) => {
+	const user = c.get('user')!
+	return c.json(buildAuthPermissionsResponse(await getCachedUserPermissions(c.env, user.id)))
 })
 
 /**
@@ -1455,252 +1411,6 @@ auth.get('/session', async (c) => {
  */
 auth.get('/discord-status', requireAuth(), async (c) => {
 	return c.json({ discord: await getDiscordStatus(c) })
-})
-
-/**
- * POST /auth/legacy-auth/start
- *
- * Start legacy auth OIDC OAuth flow.
- * Requires authentication.
- * Returns authorization URL to redirect user to.
- */
-auth.post('/legacy-auth/start', requireAuth(), async (c) => {
-	const user = c.get('user')!
-	const db = c.get('db') || createDb(c.env.DATABASE_URL)
-
-	// Check if user already has legacy auth linked
-	const userRecord = await db.query.users.findFirst({
-		where: eq(users.id, user.id),
-		columns: { legacyAuthUserId: true },
-	})
-
-	if (userRecord?.legacyAuthUserId) {
-		return c.json({ error: 'User already has a legacy account linked' }, 400)
-	}
-
-	// Fetch OIDC discovery document
-	const discoveryResponse = await fetch(
-		'https://auth.pleaseignore.com/openid/.well-known/openid-configuration'
-	)
-
-	if (!discoveryResponse.ok) {
-		return c.json({ error: 'Failed to fetch OIDC discovery document' }, 500)
-	}
-
-	const discovery = await discoveryResponse.json<{
-		authorization_endpoint: string
-		token_endpoint: string
-	}>()
-
-	// Generate OAuth state (UUID)
-	const state = crypto.randomUUID()
-
-	// Store state in database to track flow type and user
-	const expiresAt = new Date(Date.now() + 15 * 60 * 1000) // 15 minutes
-	await db.insert(oauthStates).values({
-		state,
-		flowType: 'legacy-auth',
-		userId: user.id,
-		redirectUrl: null,
-		expiresAt,
-	})
-
-	// Build authorization URL
-	const params = new URLSearchParams({
-		client_id: c.env.LEGACY_AUTH_CLIENT_ID,
-		redirect_uri: c.env.LEGACY_AUTH_CALLBACK_URL,
-		response_type: 'code',
-		scope: 'openid profile read_profile read_characters ssouser',
-		state,
-	})
-
-	const authorizationUrl = `${discovery.authorization_endpoint}?${params.toString()}`
-
-	return c.json({
-		authorizationUrl,
-		state,
-	})
-})
-
-/**
- * GET /auth/legacy-auth/callback
- *
- * Handle OAuth callback from legacy auth OIDC server.
- * Exchanges authorization code for access token, fetches user profile, and saves legacy auth info.
- */
-auth.get('/legacy-auth/callback', async (c) => {
-	const code = c.req.query('code')
-	const state = c.req.query('state')
-
-	if (!code) {
-		return c.redirect(
-			'/legacy-auth/callback?error=' + encodeURIComponent('Missing authorization code')
-		)
-	}
-
-	if (!state) {
-		return c.redirect(
-			'/legacy-auth/callback?error=' + encodeURIComponent('Missing state parameter')
-		)
-	}
-
-	const db = createDb(c.env.DATABASE_URL)
-	const userService = new UserService(db)
-
-	// Validate state from oauthStates table
-	const oauthState = await db.query.oauthStates.findFirst({
-		where: eq(oauthStates.state, state),
-	})
-
-	if (!oauthState) {
-		return c.redirect('/legacy-auth/callback?error=' + encodeURIComponent('Invalid OAuth state'))
-	}
-
-	// Check if state has expired
-	if (new Date() > oauthState.expiresAt) {
-		await db.delete(oauthStates).where(eq(oauthStates.state, state))
-		return c.redirect(
-			'/legacy-auth/callback?error=' +
-				encodeURIComponent('OAuth state has expired. Please try again.')
-		)
-	}
-
-	// Check flow type
-	if (oauthState.flowType !== 'legacy-auth') {
-		return c.redirect('/legacy-auth/callback?error=' + encodeURIComponent('Invalid flow type'))
-	}
-
-	// Verify user ID exists
-	if (!oauthState.userId) {
-		return c.redirect(
-			'/legacy-auth/callback?error=' + encodeURIComponent('Invalid OAuth state - no user ID found')
-		)
-	}
-
-	// Verify user exists
-	const user = await userService.getUserById(oauthState.userId)
-	if (!user) {
-		return c.redirect('/legacy-auth/callback?error=' + encodeURIComponent('User not found'))
-	}
-
-	// SECURITY: Check if user already has legacy auth linked
-	if (user.legacyAuthUserId) {
-		await db.delete(oauthStates).where(eq(oauthStates.state, state))
-		return c.redirect(
-			'/legacy-auth/callback?error=' +
-				encodeURIComponent('User already has a legacy account linked')
-		)
-	}
-
-	// Fetch OIDC discovery document
-	const discoveryResponse = await fetch(
-		'https://auth.pleaseignore.com/openid/.well-known/openid-configuration'
-	)
-
-	if (!discoveryResponse.ok) {
-		return c.redirect(
-			'/legacy-auth/callback?error=' + encodeURIComponent('Failed to fetch OIDC discovery document')
-		)
-	}
-
-	const discovery = await discoveryResponse.json<{
-		token_endpoint: string
-	}>()
-
-	// Exchange authorization code for access token
-	const tokenResponse = await fetch(discovery.token_endpoint, {
-		method: 'POST',
-		headers: {
-			'Content-Type': 'application/x-www-form-urlencoded',
-		},
-		body: new URLSearchParams({
-			client_id: c.env.LEGACY_AUTH_CLIENT_ID,
-			client_secret: c.env.LEGACY_AUTH_CLIENT_SECRET,
-			code,
-			grant_type: 'authorization_code',
-			redirect_uri: c.env.LEGACY_AUTH_CALLBACK_URL,
-		}),
-	})
-
-	if (!tokenResponse.ok) {
-		const errorText = await tokenResponse.text()
-		logger.error('[Legacy Auth] Token exchange failed:', errorText)
-		await db.delete(oauthStates).where(eq(oauthStates.state, state))
-		return c.redirect(
-			'/legacy-auth/callback?error=' +
-				encodeURIComponent('Failed to exchange authorization code for token')
-		)
-	}
-
-	const tokenData = await tokenResponse.json<{
-		access_token: string
-		token_type?: string
-		expires_in?: number
-	}>()
-
-	if (!tokenData.access_token) {
-		await db.delete(oauthStates).where(eq(oauthStates.state, state))
-		return c.redirect(
-			'/legacy-auth/callback?error=' + encodeURIComponent('No access token in response')
-		)
-	}
-
-	logger.log('[Legacy Auth] Access token fetched', {
-		accessToken: tokenData.access_token,
-		tokenType: tokenData.token_type,
-		expiresIn: tokenData.expires_in,
-	})
-	// Call profile API to get user info
-	const profileResponse = await fetch('https://auth.pleaseignore.com/openid/userinfo', {
-		headers: {
-			Authorization: `Bearer ${tokenData.access_token}`,
-		},
-	})
-
-	if (!profileResponse.ok) {
-		const errorText = await profileResponse.text()
-		logger.error(
-			'[Legacy Auth] Profile fetch failed:',
-			errorText,
-			profileResponse.status,
-			profileResponse.statusText
-		)
-		await db.delete(oauthStates).where(eq(oauthStates.state, state))
-		return c.redirect(
-			'/legacy-auth/callback?error=' + encodeURIComponent('Failed to fetch user profile')
-		)
-	}
-
-	const profile = await profileResponse.json<{
-		sub: string
-		auth_username: string
-	}>()
-
-	if (!profile.sub || !profile.auth_username) {
-		await db.delete(oauthStates).where(eq(oauthStates.state, state))
-		return c.redirect(
-			'/legacy-auth/callback?error=' +
-				encodeURIComponent('Invalid profile response - missing id or username')
-		)
-	}
-
-	try {
-		// Update user record with legacy auth info (includes duplicate check)
-		await userService.updateLegacyAuthInfo(oauthState.userId, profile.sub, profile.auth_username)
-	} catch (error) {
-		await db.delete(oauthStates).where(eq(oauthStates.state, state))
-		const errorMessage =
-			error instanceof Error ? error.message : 'Failed to update legacy auth info'
-		return c.redirect('/legacy-auth/callback?error=' + encodeURIComponent(errorMessage))
-	}
-
-	// Delete OAuth state after successful use
-	await db.delete(oauthStates).where(eq(oauthStates.state, state))
-
-	// Redirect to frontend callback page with success
-	return c.redirect(
-		`/legacy-auth/callback?success=true&username=${encodeURIComponent(profile.auth_username)}`
-	)
 })
 
 export default auth

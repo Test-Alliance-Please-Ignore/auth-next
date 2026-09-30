@@ -210,6 +210,7 @@ function callbackResult(ownerHash: string) {
 
 beforeEach(() => {
 	vi.clearAllMocks()
+	cleanHrStub.isUserBlacklisted.mockResolvedValue(false)
 	vi.mocked(waitUntilWithTelemetry).mockImplementation(() => undefined)
 	vi.mocked(ActivityService).mockImplementation(function () {
 		return {
@@ -695,6 +696,36 @@ describe('GET /api/auth/callback - character owner hash is enforced on login', (
 			},
 		})
 		expect(updateWhere).toHaveBeenCalled()
+	})
+
+	it('rejects a character-link callback when the state owner is blocklisted', async () => {
+		mockDb({
+			state: 'state-1',
+			flowType: 'character',
+			userId: 'user-1',
+			redirectUrl: null,
+			metadata: null,
+			expiresAt: FUTURE,
+		})
+		mockStubs({ handleCallback: vi.fn().mockResolvedValue(callbackResult('SAME-HASH')) })
+		cleanHrStub.isUserBlacklisted.mockResolvedValue(true)
+		const getUserByCharacterId = vi.fn()
+		const invalidateAllUserSessions = vi.fn().mockResolvedValue(1)
+		vi.mocked(SessionService).mockImplementation(function () {
+			return { invalidateAllUserSessions } as any
+		})
+		vi.mocked(UserService).mockImplementation(function () {
+			return {
+				getUserById: vi.fn().mockResolvedValue({ id: 'user-1', characters: [] }),
+				getUserByCharacterId,
+			} as any
+		})
+
+		const res = await callbackRequest({ state: 'state-1' })
+
+		expect(res.status).toBe(403)
+		expect(getUserByCharacterId).not.toHaveBeenCalled()
+		expect(invalidateAllUserSessions).toHaveBeenCalledWith('user-1')
 	})
 
 	it('adopts the real hash for a legacy-imported character instead of locking the user out', async () => {

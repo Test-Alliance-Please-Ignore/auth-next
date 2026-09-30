@@ -413,7 +413,7 @@ describe('users corporation access', () => {
 		expect(corpStub.getMembers).not.toHaveBeenCalled()
 	})
 
-	it('disposes RPC results when checking quick corporation access', async () => {
+	it('uses persisted affiliation data and disposes RPC results when checking quick corporation access', async () => {
 		dbStub.query.userCharacters.findMany.mockResolvedValue([
 			{
 				characterId: '2001',
@@ -423,11 +423,9 @@ describe('users corporation access', () => {
 				hasValidToken: true,
 			},
 		] as any)
-		const characterResult = makeRpcResult({ corporationId: '1001' })
 		const corporationResult = makeRpcResult({ ceoId: '9999' })
 		const directorsResult = makeRpcResult([])
 		const hrCorporationsResult = makeRpcResult(['1001'])
-		charStub.getCharacterInfo.mockResolvedValue(characterResult.value)
 		corpStub.getCorporationInfo.mockResolvedValue(corporationResult.value)
 		corpStub.getDirectors.mockResolvedValue(directorsResult.value)
 		hrStub.getUserHrCorporations.mockResolvedValue(hrCorporationsResult.value)
@@ -436,8 +434,12 @@ describe('users corporation access', () => {
 		const res = await app.request('/api/users/has-corporation-access', {}, env)
 
 		expect(res.status).toBe(200)
-		expect(await res.json()).toEqual({ hasAccess: true })
-		expect(characterResult.dispose).toHaveBeenCalledOnce()
+		expect(await res.json()).toEqual({
+			hasAccess: true,
+			hasLeadershipAccess: false,
+			hasMemberLeadershipAccess: false,
+		})
+		expect(charStub.getCharacterInfo).not.toHaveBeenCalled()
 		expect(corporationResult.dispose).toHaveBeenCalledOnce()
 		expect(directorsResult.dispose).toHaveBeenCalledOnce()
 		expect(hrCorporationsResult.dispose).toHaveBeenCalledOnce()

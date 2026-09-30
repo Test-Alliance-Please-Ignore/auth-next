@@ -3409,10 +3409,16 @@ app.get('/legacy/history/:legacyApplicationId', requireAuth(), async (c) => {
 			),
 		]
 		if (actorLegacyIds.length > 0) {
-			const actorUsers = await db.query.users.findMany({
-				where: inArray(users.legacyAuthUserId, actorLegacyIds),
-				columns: { id: true, legacyAuthUserId: true, mainCharacterId: true },
-			})
+			const actorModernUsers = await legacy.resolveLegacyActorModernUsers(actorLegacyIds)
+			const actorUserIds = [...new Set(Object.values(actorModernUsers))]
+			const actorUsers =
+				actorUserIds.length > 0
+					? await db.query.users.findMany({
+							where: inArray(users.id, actorUserIds),
+							columns: { id: true, mainCharacterId: true },
+						})
+					: []
+			const usersById = new Map(actorUsers.map((userRow) => [userRow.id, userRow]))
 			const mainCharacterIds = actorUsers.map((userRow) => userRow.mainCharacterId)
 			const chars =
 				mainCharacterIds.length > 0
@@ -3422,10 +3428,11 @@ app.get('/legacy/history/:legacyApplicationId', requireAuth(), async (c) => {
 						})
 					: []
 			const charNameById = new Map(chars.map((char) => [char.characterId, char.characterName]))
-			for (const actorUser of actorUsers) {
-				if (!actorUser.legacyAuthUserId) continue
-				actorMatches[actorUser.legacyAuthUserId] = {
-					userId: actorUser.id,
+			for (const [legacyAuthUserId, modernUserId] of Object.entries(actorModernUsers)) {
+				const actorUser = usersById.get(modernUserId)
+				if (!actorUser) continue
+				actorMatches[legacyAuthUserId] = {
+					userId: modernUserId,
 					mainCharacterName: charNameById.get(actorUser.mainCharacterId) ?? null,
 				}
 			}

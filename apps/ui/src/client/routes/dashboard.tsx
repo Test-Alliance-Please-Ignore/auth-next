@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { AlertTriangle, ExternalLink, RefreshCw, UserPlus } from 'lucide-react'
-import { useEffect, useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router'
+import { useState } from 'react'
+import { Link, useNavigate } from 'react-router'
 
 import { DiscordCard } from '@/components/discord-card'
 import { ServicesCard } from '@/components/services-card'
@@ -23,7 +23,6 @@ export default function DashboardPage() {
 	usePageTitle(t('dashboard.title'))
 	const { user, isLoading, refetch } = useAuth()
 	const navigate = useNavigate()
-	const [searchParams, setSearchParams] = useSearchParams()
 	const [isLinkingCharacter, setIsLinkingCharacter] = useState(false)
 	const [reauthorizingCharacters, setReauthorizingCharacters] = useState<Set<string>>(new Set())
 	const [refreshingCharacters, setRefreshingCharacters] = useState<Set<string>>(new Set())
@@ -34,26 +33,6 @@ export default function DashboardPage() {
 		enabled: Boolean(user),
 		staleTime: 60 * 1000,
 	})
-
-	// Force immediate auth/session refresh after OAuth token update callback.
-	useEffect(() => {
-		if (searchParams.get('tokenUpdated') !== '1') return
-
-		void (async () => {
-			try {
-				await refetch()
-			} finally {
-				setSearchParams(
-					(prev) => {
-						const next = new URLSearchParams(prev)
-						next.delete('tokenUpdated')
-						return next
-					},
-					{ replace: true }
-				)
-			}
-		})()
-	}, [searchParams, refetch, setSearchParams])
 
 	const handleRefreshCharacter = async (characterId: string) => {
 		// Prevent multiple refreshes for the same character
@@ -498,15 +477,9 @@ export default function DashboardPage() {
 				</Card>
 			</Section>
 
-			{/* Services Card - Only show when legacy auth is linked */}
-			{user.legacyAuth?.isLinked && (
-				<>
-					<div className="my-8" />
-					<Section>
-						<ServicesCard />
-					</Section>
-				</>
-			)}
+			<Section>
+				<ServicesCard />
+			</Section>
 		</Container>
 	)
 }
