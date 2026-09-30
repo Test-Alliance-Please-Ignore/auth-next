@@ -56,6 +56,7 @@ beforeEach(() => {
 	vi.setSystemTime(new Date('2026-09-14T11:00:00Z'))
 	client = new QueryClient({ defaultOptions: { queries: { retry: false, retryOnMount: false } } })
 	client.setQueryData(['auth', 'session'], { authenticated: true, user: applicant })
+	client.setQueryData(['auth', 'permissions', applicant.id], { permissions: [] })
 	client.setQueryData(listKey, {
 		rows: [broadcast, { ...broadcast, id: 'draft-original', status: 'draft' }],
 		rowCount: 1234,
@@ -146,11 +147,14 @@ describe('member broadcast history and detail localization', () => {
 			authenticated: true,
 			user: { ...applicant, id: 'other-user' },
 		})
+		client.setQueryData(['auth', 'permissions', 'other-user'], { permissions: [] })
 		html = renderUI(<BroadcastsPage />)
 		expect(html).not.toContain('aria-label="Broadcast zurücknehmen"')
 		client.setQueryData(['auth', 'session'], {
 			authenticated: true,
 			user: { ...applicant, id: 'other-user' },
+		})
+		client.setQueryData(['auth', 'permissions', 'other-user'], {
 			permissions: [broadcastManagePermission],
 		})
 		html = renderUI(<BroadcastsPage />)
