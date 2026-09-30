@@ -15,7 +15,6 @@ const hoisted = vi.hoisted(() => {
 			getMemberCorporationIds: vi.fn(),
 			batchCreateRoles: vi.fn(),
 			replaceCoreMembershipRolesForUser: vi.fn(),
-			clearUserRolesCache: vi.fn(),
 		},
 	}
 })
@@ -36,9 +35,7 @@ vi.mock('@repo/do-utils', () => ({
 	}),
 }))
 
-vi.mock('../../lib/groups-cache', () => ({
-	clearUserRolesCache: hoisted.mocks.clearUserRolesCache,
-}))
+vi.mock('../../lib/groups-cache', () => ({}))
 
 describe('reconcileUserCoreMembershipRoles', () => {
 	beforeEach(() => {
@@ -66,7 +63,6 @@ describe('reconcileUserCoreMembershipRoles', () => {
 				allianceId: '200',
 			},
 		])
-		hoisted.mocks.batchCreateRoles.mockResolvedValue([])
 		hoisted.mocks.replaceCoreMembershipRolesForUser.mockResolvedValue({
 			roleAttachments: [],
 			desiredCount: 2,
@@ -82,13 +78,7 @@ describe('reconcileUserCoreMembershipRoles', () => {
 			'user-1'
 		)
 
-		expect(hoisted.mocks.batchCreateRoles).toHaveBeenCalledWith({
-			roles: CORE_ROLES.map((role) => ({
-				name: role,
-				ownedBy: 'urn:service:core',
-				description: `${role} role for the HR system`,
-			})),
-		})
+		expect(hoisted.mocks.batchCreateRoles).not.toHaveBeenCalled()
 		expect(hoisted.mocks.replaceCoreMembershipRolesForUser).toHaveBeenCalledWith({
 			userId: 'user-1',
 			roles: [
@@ -104,7 +94,6 @@ describe('reconcileUserCoreMembershipRoles', () => {
 				},
 			],
 		})
-		expect(hoisted.mocks.clearUserRolesCache).toHaveBeenCalledWith('user-1')
 		expect(result.desiredCount).toBe(2)
 	})
 
@@ -118,7 +107,6 @@ describe('reconcileUserCoreMembershipRoles', () => {
 				allianceId: null,
 			},
 		])
-		hoisted.mocks.batchCreateRoles.mockResolvedValue([])
 		hoisted.mocks.replaceCoreMembershipRolesForUser.mockResolvedValue({
 			roleAttachments: [],
 			desiredCount: 0,
@@ -151,7 +139,6 @@ describe('reconcileUserCoreMembershipRoles', () => {
 			},
 		])
 		hoisted.mocks.getMemberCorporationIds.mockResolvedValue([])
-		hoisted.mocks.batchCreateRoles.mockResolvedValue([])
 		hoisted.mocks.replaceCoreMembershipRolesForUser.mockResolvedValue({
 			roleAttachments: [],
 			desiredCount: 1,
@@ -177,5 +164,36 @@ describe('reconcileUserCoreMembershipRoles', () => {
 				},
 			],
 		})
+	})
+
+	it('seeds missing core roles once and retries the replacement', async () => {
+		hoisted.mocks.getUserCharacters.mockResolvedValue([])
+		hoisted.mocks.replaceCoreMembershipRolesForUser
+			.mockRejectedValueOnce(
+				new Error('Core membership roles are missing. Seed roles before reconciliation.')
+			)
+			.mockResolvedValueOnce({
+				roleAttachments: [],
+				desiredCount: 0,
+				attachedCount: 0,
+				detachedCount: 0,
+			})
+
+		await reconcileUserCoreMembershipRoles(
+			{
+				CORE: hoisted.coreBinding,
+				GROUPS: hoisted.groupsBinding,
+			},
+			'user-4'
+		)
+
+		expect(hoisted.mocks.batchCreateRoles).toHaveBeenCalledWith({
+			roles: CORE_ROLES.map((role) => ({
+				name: role,
+				ownedBy: 'urn:service:core',
+				description: `${role} role for the HR system`,
+			})),
+		})
+		expect(hoisted.mocks.replaceCoreMembershipRolesForUser).toHaveBeenCalledTimes(2)
 	})
 })

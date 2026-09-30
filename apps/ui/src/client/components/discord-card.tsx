@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query'
 import { AlertTriangle, CheckCircle2, MessageSquare, Shield, XCircle } from 'lucide-react'
 import { useState } from 'react'
 
@@ -41,6 +42,15 @@ interface DiscordCardProps {
 export function DiscordCard({ user }: DiscordCardProps) {
 	const { t } = useAppTranslation()
 	const { mutate: linkDiscord, isPending, error: linkError, reset } = useDiscordLink()
+	const hasLinkedDiscord = user.discordLinked ?? Boolean(user.discord)
+	const discordStatusQuery = useQuery({
+		queryKey: ['auth', 'discord-status', user.id],
+		queryFn: () => apiClient.get<{ discord: User['discord'] }>('/auth/discord-status'),
+		enabled: hasLinkedDiscord,
+		staleTime: 5 * 60 * 1000,
+		retry: false,
+	})
+	const discord = discordStatusQuery.data?.discord ?? user.discord
 	const [isJoiningServers, setIsJoiningServers] = useState(false)
 	// Translate at render time so feedback also updates when the locale changes.
 	const [joinMessage, setJoinMessage] = useState<RefreshMessage | null>(null)
@@ -104,34 +114,38 @@ export function DiscordCard({ user }: DiscordCardProps) {
 					<div>
 						<CardTitle className="text-2xl">Discord</CardTitle>
 						<CardDescription>
-							{t(user.discord ? 'discordCard.connected' : 'discordCard.linkDescription')}
+							{t(
+								discord || hasLinkedDiscord
+									? 'discordCard.connected'
+									: 'discordCard.linkDescription'
+							)}
 						</CardDescription>
 					</div>
 				</div>
 			</CardHeader>
 			<CardContent className="flex-1 flex flex-col justify-center">
-				{user.discord ? (
+				{discord ? (
 					// Linked state - show Discord username and join button
 					<div className="space-y-4">
 						<div className="flex items-center gap-3">
-							{user.discord.authRevoked ? (
+							{discord.authRevoked ? (
 								<XCircle className="h-5 w-5 text-destructive" />
 							) : (
 								<CheckCircle2 className="h-5 w-5 text-green-500" />
 							)}
 							<div>
 								<p className="font-semibold text-lg">
-									{user.discord.username}
-									{user.discord.discriminator !== '0' && `#${user.discord.discriminator}`}
+									{discord.username}
+									{discord.discriminator !== '0' && `#${discord.discriminator}`}
 								</p>
 								<p className="text-sm text-muted-foreground">
-									{t('discordCard.userId', { id: user.discord.userId })}
+									{t('discordCard.userId', { id: discord.userId })}
 								</p>
 							</div>
 						</div>
 
 						{/* Authorization revoked warning */}
-						{user.discord.authRevoked && (
+						{discord.authRevoked && (
 							<div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3">
 								<div className="flex items-start gap-2">
 									<AlertTriangle className="h-4 w-4 text-destructive mt-0.5 flex-shrink-0" />
@@ -149,7 +163,7 @@ export function DiscordCard({ user }: DiscordCardProps) {
 
 						{/* Join servers button or Re-link button */}
 						<div className="space-y-2">
-							{user.discord.authRevoked ? (
+							{discord.authRevoked ? (
 								<Button
 									onClick={handleLinkClick}
 									disabled={isPending}
@@ -184,6 +198,16 @@ export function DiscordCard({ user }: DiscordCardProps) {
 								<p className="text-sm text-destructive">{translateRefreshMessage(joinError)}</p>
 							)}
 						</div>
+					</div>
+				) : hasLinkedDiscord ? (
+					<div className="space-y-3">
+						<div className="flex items-center gap-3">
+							<MessageSquare className="h-5 w-5 text-[hsl(var(--discord-blurple))]" />
+							<p className="text-muted-foreground">{t('discordCard.refreshing')}</p>
+						</div>
+						{discordStatusQuery.isError && (
+							<p className="text-sm text-destructive">{t('discordCard.refreshStatusError')}</p>
+						)}
 					</div>
 				) : (
 					// Not linked state - show link button

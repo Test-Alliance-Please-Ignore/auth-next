@@ -128,7 +128,7 @@ interface AuthSessionUserView {
 	}>
 	is_admin: boolean
 	roles: string[]
-	discord: Awaited<ReturnType<typeof getDiscordStatus>>
+	discordLinked: boolean
 	legacyAuth: {
 		userId: string | null
 		username: string | null
@@ -227,6 +227,76 @@ function enqueueIpRecording(
 	)
 }
 
+type PostAuthenticationWorkParams = {
+	userId: string
+	characterId: string
+	characterName: string
+	requestMetadata: RequestMetadata
+	refreshSource: 'login' | 'claim-main'
+	bypassRefreshThrottle?: boolean
+	corporationId?: string | null
+}
+
+/**
+ * Schedule best-effort work only after the security-critical authentication path has
+ * completed. Each task creates its own database client because it can outlive the request.
+ */
+function enqueuePostAuthenticationWork(
+	c: Context<App>,
+	{
+		userId,
+		characterId,
+		characterName,
+		requestMetadata,
+		refreshSource,
+		bypassRefreshThrottle = false,
+		corporationId,
+	}: PostAuthenticationWorkParams
+): void {
+	waitUntilWithTelemetry(
+		c.executionCtx,
+		'auth.login-audit',
+		async () => {
+			const db = createDb(c.env.DATABASE_URL)
+			await new ActivityService(db).logLogin(userId, characterId, requestMetadata)
+		},
+		{ userId, characterId, source: refreshSource }
+	)
+
+	waitUntilWithTelemetry(
+		c.executionCtx,
+		'auth.user-refresh-workflow-trigger',
+		async () => {
+			const db = createDb(c.env.DATABASE_URL)
+			await triggerUserRefreshWorkflow({
+				db,
+				env: c.env,
+				userId,
+				source: refreshSource,
+				bypassThrottle: bypassRefreshThrottle,
+				refreshMode: 'event',
+			})
+		},
+		{ userId, characterId, source: refreshSource }
+	)
+
+	waitUntilWithTelemetry(
+		c.executionCtx,
+		'auth.director-health-recheck-workflow-trigger',
+		async () => {
+			const db = createDb(c.env.DATABASE_URL)
+			await triggerDirectorHealthRecheckAfterTokenReauth(
+				c.env,
+				db,
+				characterId,
+				characterName,
+				corporationId
+			)
+		},
+		{ userId, characterId, source: refreshSource }
+	)
+}
+
 async function hydrateAndReconcileUserRoles(
 	c: Context<App>,
 	db: ReturnType<typeof createDb>,
@@ -272,7 +342,7 @@ async function hydrateAndReconcileUserRoles(
 }
 
 async function triggerDirectorHealthRecheckAfterTokenReauth(
-	c: Context<App>,
+	env: App['Bindings'],
 	db: ReturnType<typeof createDb>,
 	characterId: string,
 	characterName: string,
@@ -309,7 +379,7 @@ async function triggerDirectorHealthRecheckAfterTokenReauth(
 	}
 
 	await triggerDirectorHealthRecheckWorkflow({
-		env: c.env,
+		env,
 		characterId,
 		characterName,
 		corporationId,
@@ -621,7 +691,6 @@ auth.get('/callback', async (c) => {
 
 	const authService = new AuthService(db, eveTokenStoreStub, c.env.SESSION_SECRET)
 	const userService = new UserService(db)
-	const activityService = new ActivityService(db)
 
 	const oauthState = await db.query.oauthStates.findFirst({
 		where: eq(oauthStates.state, state),
@@ -669,7 +738,7 @@ auth.get('/callback', async (c) => {
 	const result = await eveTokenStoreStub.handleCallback(code, state)
 
 	if (!result.success || !result.characterId || !result.characterInfo) {
-		await activityService.logLoginFailed(
+		await new ActivityService(db).logLoginFailed(
 			'unknown',
 			result.error || 'Unknown error',
 			getRequestMetadata(c)
@@ -703,7 +772,7 @@ auth.get('/callback', async (c) => {
 					.set({ hasValidToken: true, updatedAt: new Date() })
 					.where(eq(userCharacters.characterId, characterId))
 				await triggerDirectorHealthRecheckAfterTokenReauth(
-					c,
+					c.env,
 					db,
 					characterId,
 					characterInfo.characterName,
@@ -784,14 +853,18 @@ auth.get('/callback', async (c) => {
 			.set({ hasValidToken: true })
 			.where(eq(userCharacters.characterId, characterId))
 		await triggerDirectorHealthRecheckAfterTokenReauth(
-			c,
+			c.env,
 			db,
 			characterId,
 			characterInfo.characterName,
 			affiliation?.corporationId
 		)
 
-		await activityService.logCharacterLinked(stateUserId, characterId, getRequestMetadata(c))
+		await new ActivityService(db).logCharacterLinked(
+			stateUserId,
+			characterId,
+			getRequestMetadata(c)
+		)
 		triggerLegacyMigrationRecheck(c, stateUserId)
 
 		await triggerUserRefreshWorkflow({
@@ -859,7 +932,7 @@ auth.get('/callback', async (c) => {
 		} else if (ownership && ownership.characterOwnerHash !== characterInfo.characterOwnerHash) {
 			const sessionService = new SessionService(db)
 			await sessionService.invalidateAllUserSessions(ownership.userId)
-			await activityService.logLoginFailed(
+			await new ActivityService(db).logLoginFailed(
 				characterId,
 				'Character owner hash mismatch - character ownership has changed',
 				getRequestMetadata(c)
@@ -926,6 +999,21 @@ auth.get('/callback', async (c) => {
 			return c.json({ error: 'Account suspended' }, 403)
 		}
 
+		// Existing logins must not make public ESI requests, but role attachments are the
+		// authorization source used by the session middleware. Reconcile them against the
+		// persisted affiliation before issuing the new session. Preserve the historic
+		// availability behavior if Groups/Core is temporarily unavailable: the existing
+		// persisted attachments remain authoritative until the next successful reconciliation.
+		try {
+			await reconcileUserCoreMembershipRoles(c.env, user.id)
+		} catch (error) {
+			logger.error('[Auth] Failed to reconcile core membership roles during login', {
+				userId: user.id,
+				characterId,
+				error: toErrorMessage(error),
+			})
+		}
+
 		// Existing user - create session
 		const session = await authService.createSession({
 			userId: user.id,
@@ -940,21 +1028,12 @@ auth.get('/callback', async (c) => {
 			.update(userCharacters)
 			.set({ hasValidToken: true })
 			.where(eq(userCharacters.characterId, characterId))
-		await triggerDirectorHealthRecheckAfterTokenReauth(
-			c,
-			db,
-			characterId,
-			characterInfo.characterName
-		)
-
-		await activityService.logLogin(user.id, characterId, getRequestMetadata(c))
-
-		await triggerUserRefreshWorkflow({
-			db,
-			env: c.env,
+		enqueuePostAuthenticationWork(c, {
 			userId: user.id,
-			source: 'login',
-			refreshMode: 'event',
+			characterId,
+			characterName: characterInfo.characterName,
+			requestMetadata: getRequestMetadata(c),
+			refreshSource: 'login',
 		})
 
 		// Auto-registration is best-effort and may require multiple ESI requests.
@@ -1067,8 +1146,6 @@ auth.post('/claim-main', async (c) => {
 
 	const authService = new AuthService(db, eveTokenStoreStub, c.env.SESSION_SECRET)
 	const userService = new UserService(db)
-	const activityService = new ActivityService(db)
-
 	// Resolve which character is being claimed from the ticket, never from the request.
 	const ticket = await db.query.oauthStates.findFirst({
 		where: eq(oauthStates.state, claimTicket),
@@ -1161,13 +1238,6 @@ auth.post('/claim-main', async (c) => {
 		.update(userCharacters)
 		.set({ hasValidToken: true })
 		.where(eq(userCharacters.characterId, tokenInfo.characterId))
-	await triggerDirectorHealthRecheckAfterTokenReauth(
-		c,
-		db,
-		tokenInfo.characterId,
-		tokenInfo.characterName,
-		affiliation?.corporationId
-	)
 
 	// Create session
 	const session = await authService.createSession({
@@ -1178,17 +1248,16 @@ auth.post('/claim-main', async (c) => {
 
 	enqueueIpRecording(c, db, user.id)
 
-	await activityService.logLogin(user.id, tokenInfo.characterId, getRequestMetadata(c))
-	triggerLegacyMigrationRecheck(c, user.id)
-
-	await triggerUserRefreshWorkflow({
-		db,
-		env: c.env,
+	enqueuePostAuthenticationWork(c, {
 		userId: user.id,
-		source: 'claim-main',
-		bypassThrottle: true,
-		refreshMode: 'event',
+		characterId: tokenInfo.characterId,
+		characterName: tokenInfo.characterName,
+		requestMetadata: getRequestMetadata(c),
+		refreshSource: 'claim-main',
+		bypassRefreshThrottle: true,
+		corporationId: affiliation?.corporationId,
 	})
+	triggerLegacyMigrationRecheck(c, user.id)
 
 	// Auto-registration is best-effort and may require multiple ESI requests.
 	// Keep it out of the authentication response path.
@@ -1335,9 +1404,6 @@ auth.get('/session', async (c) => {
 	// Fetch user permissions (cached for 15 seconds)
 	const permissions = await getCachedUserPermissions(c.env, user.id)
 
-	// Lazy-load Discord status if needed
-	const discordStatus = await getDiscordStatus(c)
-
 	// Reuse the full profile already loaded by session middleware.
 	// Fall back to a direct DB lookup only if something unexpected bypassed the middleware.
 	let profile = c.get('userProfile')
@@ -1373,12 +1439,22 @@ auth.get('/session', async (c) => {
 				characters: user.characters,
 				is_admin: user.is_admin,
 				roles: user.roles,
-				discord: discordStatus,
+				discordLinked: Boolean(user.discordUserId),
 				legacyAuth,
 			},
 			permissions
 		)
 	)
+})
+
+/**
+ * GET /auth/discord-status
+ *
+ * Discord is profile presentation data, not an authentication dependency. Loading it
+ * separately keeps the authenticated app shell responsive when Discord is slow.
+ */
+auth.get('/discord-status', requireAuth(), async (c) => {
+	return c.json({ discord: await getDiscordStatus(c) })
 })
 
 /**

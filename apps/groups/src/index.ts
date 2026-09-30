@@ -3,17 +3,16 @@ import { Hono } from 'hono'
 import { withNotFound, withOnError, withSentry, withWorkersLogger } from '@repo/hono-helpers'
 
 import { GroupsDO } from './durable-object'
+import { MockCore, MockEveCharacterData } from './test-mocks'
 
 import type { App } from './context'
 
 const app = new Hono<App>()
-	.use(
-		'*',
-		(c, next) =>
-			withWorkersLogger(c.env.NAME, {
-				environment: c.env.ENVIRONMENT,
-				release: c.env.SENTRY_RELEASE,
-			})(c, next)
+	.use('*', (c, next) =>
+		withWorkersLogger(c.env.NAME, {
+			environment: c.env.ENVIRONMENT,
+			release: c.env.SENTRY_RELEASE,
+		})(c, next)
 	)
 	.onError(withOnError())
 	.notFound(withNotFound())
@@ -32,3 +31,4 @@ export default withSentry(app)
 // Note: Automatic Sentry instrumentation for DOs is not supported in Cloudflare Workers
 // Use manual captureException() in DO methods for error tracking
 export { GroupsDO as Groups }
+export { MockCore, MockEveCharacterData }

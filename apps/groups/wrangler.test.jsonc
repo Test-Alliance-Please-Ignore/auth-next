@@ -18,13 +18,21 @@
 			{
 				"name": "GROUPS",
 				"class_name": "Groups"
+			},
+			{
+				"name": "EVE_CHARACTER_DATA",
+				"class_name": "MockEveCharacterData"
+			},
+			{
+				"name": "CORE",
+				"class_name": "MockCore"
 			}
 		]
 	},
 	"migrations": [
 		{
 			"tag": "v1",
-			"new_sqlite_classes": ["Groups"]
+			"new_sqlite_classes": ["Groups", "MockEveCharacterData", "MockCore"]
 		}
 	]
 }

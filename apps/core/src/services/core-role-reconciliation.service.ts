@@ -7,8 +7,6 @@ import {
 import { getStub } from '@repo/do-utils'
 import { ResourceType } from '@repo/groups'
 
-import { clearUserRolesCache } from '../lib/groups-cache'
-
 import type { Core } from '@repo/core'
 import type {
 	Groups,
@@ -21,6 +19,16 @@ type CoreRoleReconciliationEnv = {
 	GROUPS: DurableObjectNamespace
 }
 
+const MISSING_CORE_MEMBERSHIP_ROLES_ERROR = 'Core membership roles are missing.'
+
+function coreRoleDefinitions() {
+	return CORE_ROLES.map((role) => ({
+		name: role,
+		ownedBy: SERVICE_CORE,
+		description: `${role} role for the HR system`,
+	}))
+}
+
 /**
  * Reconcile core membership roles for a user against persisted user character affiliations.
  * This is safe to call from login/link flows and refresh workflows.
@@ -31,15 +39,6 @@ export async function reconcileUserCoreMembershipRoles(
 ): Promise<ReplaceCoreMembershipRolesForUserResponse> {
 	const coreStub = getStub<Core>(env.CORE, 'default')
 	const groupsStub = getStub<Groups>(env.GROUPS, 'default')
-
-	// Defensive role seeding: idempotent and safe to run on each reconcile call.
-	await groupsStub.batchCreateRoles({
-		roles: CORE_ROLES.map((role) => ({
-			name: role,
-			ownedBy: SERVICE_CORE,
-			description: `${role} role for the HR system`,
-		})),
-	})
 
 	const characters = await coreStub.getUserCharacters(userId)
 	const corporationIds = [
@@ -87,12 +86,26 @@ export async function reconcileUserCoreMembershipRoles(
 		}
 	}
 
-	const result = await groupsStub.replaceCoreMembershipRolesForUser({
+	const request = {
 		userId,
 		roles: roleTargets,
-	})
+	}
+	let result: ReplaceCoreMembershipRolesForUserResponse
+	try {
+		result = await groupsStub.replaceCoreMembershipRolesForUser(request)
+	} catch (error) {
+		const errorMessage = error instanceof Error ? error.message : String(error)
+		if (!errorMessage.includes(MISSING_CORE_MEMBERSHIP_ROLES_ERROR)) {
+			throw error
+		}
 
-	clearUserRolesCache(userId)
+		// Core's singleton seeds these roles during initialization. This recovery path
+		// keeps reconciliation self-healing if an operator removes them, without adding
+		// an otherwise redundant Groups write to every login.
+		await groupsStub.batchCreateRoles({ roles: coreRoleDefinitions() })
+		result = await groupsStub.replaceCoreMembershipRolesForUser(request)
+	}
+
 	return result
 }
 

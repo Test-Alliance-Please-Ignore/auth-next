@@ -2,6 +2,7 @@ import { createExecutionContext, env, waitOnExecutionContext } from 'cloudflare:
 import { describe, expect, it } from 'vitest'
 
 import { getStub } from '@repo/do-utils'
+import { RoleAttachmentType } from '@repo/groups'
 
 import worker from '../../index'
 
@@ -12,10 +13,10 @@ import type { Env } from '../../context'
 const testEnv = env as unknown as Env
 
 // Mock user IDs for testing (these would normally come from the core database)
-const ADMIN_USER_ID = 'admin-user-123'
-const USER_1_ID = 'user-1-456'
-const USER_2_ID = 'user-2-789'
-const USER_3_ID = 'user-3-abc'
+const ADMIN_USER_ID = '00000000-0000-4000-8000-000000000001'
+const USER_1_ID = '00000000-0000-4000-8000-000000000002'
+const USER_2_ID = '00000000-0000-4000-8000-000000000003'
+const USER_3_ID = '00000000-0000-4000-8000-000000000004'
 const FALLBACK_OWNER_USER_ID = '4a16f141-ddd2-4179-8e3f-7d64a6548f74'
 
 describe('Groups Worker', () => {
@@ -161,13 +162,48 @@ describe('Groups Durable Object - Global Permissions', () => {
 
 		const uncategorizedPermissions = await stub.listPermissions('uncategorized')
 
-		expect(uncategorizedPermissions.some((permission) => permission.id === uncategorizedPermission.id)).toBe(
-			true
-		)
-		expect(uncategorizedPermissions.some((permission) => permission.id === categorizedPermission.id)).toBe(
-			false
-		)
+		expect(
+			uncategorizedPermissions.some((permission) => permission.id === uncategorizedPermission.id)
+		).toBe(true)
+		expect(
+			uncategorizedPermissions.some((permission) => permission.id === categorizedPermission.id)
+		).toBe(false)
 		expect(uncategorizedPermissions.every((permission) => permission.category === null)).toBe(true)
+	})
+})
+
+describe('Groups Durable Object - User Role Attachment Cache', () => {
+	it('invalidates a warm user-role cache immediately after revocation', async () => {
+		const stub = getStub<Groups>(testEnv.GROUPS, 'test-user-role-cache-invalidation')
+		const role = await stub.createRole({
+			name: `test-user-role-cache-${crypto.randomUUID()}`,
+			ownedBy: 'urn:test:groups-cache',
+			description: 'Tests immediate user role attachment cache invalidation',
+		})
+
+		await stub.attachRoleTo({
+			roleId: role.id,
+			attachedToType: RoleAttachmentType.USER,
+			attachedToId: USER_1_ID,
+		})
+
+		const warmRead = await stub.getRolesFor({
+			attachedToType: RoleAttachmentType.USER,
+			attachedToId: USER_1_ID,
+		})
+		expect(warmRead.map((attachment) => attachment.role.id)).toContain(role.id)
+
+		await stub.detachRoleFrom({
+			roleId: role.id,
+			attachedToType: RoleAttachmentType.USER,
+			attachedToId: USER_1_ID,
+		})
+
+		const afterRevocation = await stub.getRolesFor({
+			attachedToType: RoleAttachmentType.USER,
+			attachedToId: USER_1_ID,
+		})
+		expect(afterRevocation.map((attachment) => attachment.role.id)).not.toContain(role.id)
 	})
 })
 
@@ -400,10 +436,14 @@ describe('Groups Durable Object - Groups', () => {
 		expect(retrieved?.ownerId).toBe(FALLBACK_OWNER_USER_ID)
 
 		const originalOwnerMemberships = await stub.getUserMemberships(USER_1_ID)
-		expect(originalOwnerMemberships.some((membership) => membership.groupId === group.id)).toBe(false)
+		expect(originalOwnerMemberships.some((membership) => membership.groupId === group.id)).toBe(
+			false
+		)
 
 		const fallbackOwnerMemberships = await stub.getUserMemberships(FALLBACK_OWNER_USER_ID)
-		expect(fallbackOwnerMemberships.some((membership) => membership.groupId === group.id)).toBe(true)
+		expect(fallbackOwnerMemberships.some((membership) => membership.groupId === group.id)).toBe(
+			true
+		)
 
 		const afterPermissions = await stub.listGroupPermissions(group.id, ADMIN_USER_ID)
 		expect(afterPermissions).toHaveLength(1)

@@ -605,6 +605,43 @@ describe('GET /api/auth/callback - character owner hash is enforced on login', (
 		expect(res.headers.get('set-cookie')).toContain('session=')
 	})
 
+	it('reconciles persisted roles and queues post-login work without blocking the response', async () => {
+		mockDb(loginState())
+		mockStubs({ handleCallback: vi.fn().mockResolvedValue(callbackResult('SAME-HASH')) })
+
+		const createSession = vi.fn().mockResolvedValue({
+			id: 'session-1',
+			sessionToken: 'token-1',
+			createdAt: new Date(),
+		})
+		vi.mocked(AuthService).mockImplementation(function () {
+			return { createSession } as any
+		})
+		vi.mocked(UserService).mockImplementation(function () {
+			return {
+				getUserByCharacterId: vi.fn().mockResolvedValue({ id: 'user-1', characters: [] }),
+				getCharacterOwnership: vi.fn().mockResolvedValue({
+					userId: 'user-1',
+					characterOwnerHash: 'SAME-HASH',
+				}),
+			} as any
+		})
+
+		const res = await callbackRequest({ state: 'state-1' })
+
+		expect(res.status).toBe(200)
+		expect(createSession).toHaveBeenCalledOnce()
+		expect(reconcileUserCoreMembershipRoles).toHaveBeenCalledWith(env, 'user-1')
+		const scheduledLabels = vi.mocked(waitUntilWithTelemetry).mock.calls.map((call) => call[1])
+		expect(scheduledLabels).toEqual(
+			expect.arrayContaining([
+				'auth.login-audit',
+				'auth.user-refresh-workflow-trigger',
+				'auth.director-health-recheck-workflow-trigger',
+			])
+		)
+	})
+
 	it('marks an already-linked character token valid when it is reauthorized', async () => {
 		const { updateWhere } = mockDb({
 			state: 'state-1',
