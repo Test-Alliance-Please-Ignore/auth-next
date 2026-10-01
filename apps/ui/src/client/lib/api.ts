@@ -4733,6 +4733,10 @@ export class ApiClient {
 		return this.get(`/srp/requests/${id}`)
 	}
 
+	async recalculateSrpRequest(id: string): Promise<any> {
+		return this.post(`/srp/requests/${id}/recalculate`, {})
+	}
+
 	/**
 	 * Get pending requests for review (paginated)
 	 */

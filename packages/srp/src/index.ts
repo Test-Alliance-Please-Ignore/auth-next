@@ -297,6 +297,13 @@ export interface Srp {
 		killmailId: string,
 		killmailHash: string
 	): Promise<SRPValuationPreview | null>
+
+	/** Recalculate and persist a request valuation from a fresh killmail detail. */
+	recalculateRequestValuation(
+		requestId: string,
+		actorUserId: string,
+		actorCharacterName: string
+	): Promise<SRPRequestResponse>
 }
 
 /**

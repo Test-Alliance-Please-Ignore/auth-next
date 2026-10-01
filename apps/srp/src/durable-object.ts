@@ -93,6 +93,13 @@ type PreviewVictimItem = {
 	items?: PreviewVictimItem[]
 }
 
+function parseIntegerIsk(value: string | number | null | undefined): bigint {
+	if (value == null) return 0n
+	const numeric = typeof value === 'number' ? value : Number(value)
+	if (!Number.isFinite(numeric) || numeric <= 0) return 0n
+	return BigInt(Math.floor(numeric))
+}
+
 const srpRequestListColumns = {
 	id: srpRequests.id,
 	userId: srpRequests.userId,
@@ -924,7 +931,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		if (Date.now() - lossDate.getTime() > maxLossAgeMs) {
 			throw new Error(`Loss is older than the maximum allowed age of ${maxLossAgeDays} days`)
 		}
-		let valuation: Awaited<ReturnType<typeof this.calculateSrpValuation>> = null
+		let valuation: Awaited<ReturnType<SrpDO['calculateSrpValuation']>> = null
 		try {
 			valuation = await this.calculateSrpValuation(
 				killmailData as any,
@@ -933,8 +940,32 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 				config
 			)
 		} catch (err) {
-			// Non-fatal — request is still created, valuation fields will be null
-			logger.error('[createRequest] SRP valuation failed:', err)
+			logger.warn('[createRequest] Cached SRP valuation failed; refreshing killmail once', {
+				characterId,
+				killmailId: normalizedKillmailId,
+				error: err instanceof Error ? err.message : String(err),
+			})
+			try {
+				const currentKillmail = await this.killmailEsi.fetchCharacterKillmailDetail(
+					characterId,
+					normalizedKillmailId,
+					killmailHash
+				)
+				if (currentKillmail && String(currentKillmail.victim.character_id) === characterId) {
+					killmailData = {
+						...currentKillmail,
+						killmail_hash: killmailHash,
+					} as unknown as KillmailDataJson
+					valuation = await this.calculateSrpValuation(
+						killmailData as any,
+						lossDate,
+						String(currentKillmail.victim.ship_type_id),
+						config
+					)
+				}
+			} catch (refreshError) {
+				logger.error('[createRequest] Refreshed SRP valuation failed:', refreshError)
+			}
 		}
 
 		// Create the request
@@ -1023,12 +1054,36 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 
 		const config = await this.getConfig()
 		const lossDate = new Date(killmailTime as string)
-		const valuation = await this.calculateSrpValuation(
-			killmailData as any,
-			lossDate,
-			String(victim.ship_type_id),
-			config
-		)
+		let valuation
+		try {
+			valuation = await this.calculateSrpValuation(
+				killmailData as any,
+				lossDate,
+				String(victim.ship_type_id),
+				config
+			)
+		} catch (error) {
+			logger.warn('[previewValuation] Cached SRP valuation failed; refreshing killmail once', {
+				characterId,
+				killmailId,
+				error: error instanceof Error ? error.message : String(error),
+			})
+			const currentKillmail = await this.killmailEsi.fetchCharacterKillmailDetail(
+				characterId,
+				killmailId,
+				killmailHash
+			)
+			if (!currentKillmail || String(currentKillmail.victim.character_id) !== characterId) {
+				throw error
+			}
+			killmailData = { ...currentKillmail, killmail_hash: killmailHash }
+			valuation = await this.calculateSrpValuation(
+				killmailData as any,
+				new Date(currentKillmail.killmail_time),
+				String(currentKillmail.victim.ship_type_id),
+				config
+			)
+		}
 
 		if (!valuation) return null
 
@@ -1067,6 +1122,99 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 			itemNames,
 			missingPriceTypeIds,
 		}
+	}
+
+	async recalculateRequestValuation(
+		requestId: string,
+		actorUserId: string,
+		actorCharacterName: string
+	): Promise<SRPRequestResponse> {
+		const request = await this.db.query.srpRequests.findFirst({
+			where: eq(srpRequests.id, requestId),
+		})
+		if (!request) throw new Error('Request not found')
+		if (!['pending', 'needs_context'].includes(request.requestStatus)) {
+			throw new Error('Only pending or needs-context requests can be recalculated')
+		}
+
+		// ESI routing is deliberately keyed by the request owner's character. The
+		// reviewing manager's identity must never select the bearer token used here.
+		const currentKillmail = await this.killmailEsi.fetchCharacterKillmailDetail(
+			request.characterId,
+			request.id,
+			request.killmailHash
+		)
+		if (!currentKillmail) throw new Error('Current killmail data is unavailable')
+		if (String(currentKillmail.victim.character_id) !== request.characterId) {
+			throw new Error('Killmail victim does not match the SRP request')
+		}
+
+		// Preserve the request's original loss date for historical market and
+		// insurance pricing, even if the authoritative ESI payload is refreshed.
+		const lossDate = new Date(request.lossDate)
+		if (!Number.isFinite(lossDate.getTime())) throw new Error('Killmail time is invalid')
+
+		const config = await this.getConfig()
+		const valuation = await this.calculateSrpValuation(
+			currentKillmail as any,
+			lossDate,
+			String(currentKillmail.victim.ship_type_id),
+			config
+		)
+		if (!valuation) throw new Error('Killmail has no valuatable equipment')
+
+		const victim = currentKillmail.victim
+		const allTypeIds = [
+			...new Set([
+				String(victim.ship_type_id),
+				...this.collectVictimItemTypeIds(victim.items ?? []),
+			]),
+		]
+		const universeStub = getStub<Universe>(this.env.UNIVERSE, 'default')
+		const typeMap = await universeStub
+			.resolveTypeNamesByIds(allTypeIds)
+			.catch(() => ({}) as Record<string, null>)
+		const { killmailItemNames, killmailItemGroupIds } = buildKillmailItemMetadata(
+			(victim.items ?? []) as Array<{
+				item_type_id?: number | string
+				type_id?: number | string
+				typeId?: number | string
+				items?: any[]
+			}>,
+			typeMap as Record<string, { typeName?: string | null; groupId?: string | null }>
+		)
+		const killmailData = { ...currentKillmail, killmail_hash: request.killmailHash }
+		const [updated] = await this.db
+			.update(srpRequests)
+			.set({
+				killmailData: killmailData as any,
+				killmailItemNames: Object.keys(killmailItemNames).length > 0 ? killmailItemNames : null,
+				killmailItemGroupIds:
+					Object.keys(killmailItemGroupIds).length > 0 ? killmailItemGroupIds : null,
+				srpEquipmentValue: valuation.equipmentValue,
+				srpInsurancePremium: valuation.insurancePremium,
+				srpInsurancePayout: valuation.insurancePayout,
+				srpNetInsurance: valuation.netInsurance,
+				srpCalculatedValue: valuation.calculatedValue,
+				srpFinalValue: valuation.finalValue,
+				shipValue: valuation.finalValue,
+				srpPriceSnapshotTime: valuation.priceSnapshotTime,
+				srpItemPrices: valuation.itemPrices,
+				updatedAt: new Date(),
+			})
+			.where(eq(srpRequests.id, requestId))
+			.returning()
+
+		if (!updated) throw new Error('Request could not be updated')
+		await this.logHistory(
+			requestId,
+			actorUserId,
+			actorCharacterName,
+			'valuation_recalculated',
+			{ metadata: { pricingSource: valuation.pricingSource } },
+			'internal'
+		)
+		return await this.formatRequestWithShipSlotCapacities(updated)
 	}
 
 	/**
@@ -2141,16 +2289,24 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		const priceSnapshotTime = prices[0]?.snapshotTime ?? null
 		let pricingSource: 'historic' | 'fallback' = prices.length > 0 ? 'historic' : 'fallback'
 
-		// Fill in any types missing from daily history using the DB-first/cache-fallback RPC
-		if (missingTypeIds.length > 0) {
+		// Fill in missing or malformed daily prices using the DB-first/cache-fallback RPC.
+		const missingPriceTypeIds = [
+			...new Set([
+				...missingTypeIds,
+				...prices
+					.filter((price) => parseIntegerIsk(price.bestSellPrice) === 0n)
+					.map((price) => price.typeId),
+			]),
+		]
+		if (missingPriceTypeIds.length > 0) {
 			try {
 				const cached = await marketsStub.getMarketPricesForTypes(
-					missingTypeIds.map(String),
+					missingPriceTypeIds.map(String),
 					priceDate
 				)
 				for (const p of cached) {
 					const avg = p.averagePrice
-					if (avg && avg > 0) {
+					if (typeof avg === 'number' && Number.isFinite(avg) && avg > 0) {
 						priceMap.set(p.typeId, Math.round(avg).toString())
 					}
 					if (p.source === 'fallback') pricingSource = 'fallback'
@@ -2190,8 +2346,7 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 
 		for (const [typeId, quantity] of equippedByType) {
 			const rawPrice = priceMap.get(typeId)
-			// Parse price as float then convert to integer ISK (truncate decimals)
-			const unitPriceIsk = rawPrice != null ? BigInt(Math.floor(parseFloat(rawPrice))) : 0n
+			const unitPriceIsk = parseIntegerIsk(rawPrice)
 			const lineTotalIsk = unitPriceIsk * BigInt(quantity)
 			// Charges (ammo, missiles, probes, etc.) are consumables — shown in fitting but not valued
 			const isConsumable = typeMetaMap[typeId]?.categoryName === 'Charge'
@@ -2221,8 +2376,8 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 				const insResult = await marketsStub.getInsurancePricesForTypes([shipTypeId], priceDate)
 				const ins = insResult[0]
 				if (ins?.platinumCost != null && ins?.platinumPayout != null) {
-					const cost = BigInt(Math.floor(ins.platinumCost))
-					const payout = BigInt(Math.floor(ins.platinumPayout))
+					const cost = parseIntegerIsk(ins.platinumCost)
+					const payout = parseIntegerIsk(ins.platinumPayout)
 					insurancePremium = String(cost)
 					insurancePayout = String(payout)
 					netInsurance = payout - cost
@@ -2239,12 +2394,16 @@ export class SrpDO extends DurableObject<Env> implements Srp {
 		const calculatedValue = String(rawCalculated)
 
 		// Apply config modifiers
-		const coverageRate = parseFloat(config?.defaultCoverageRate ?? '1.0')
+		const configuredCoverageRate = parseFloat(config?.defaultCoverageRate ?? '1.0')
+		const coverageRate =
+			Number.isFinite(configuredCoverageRate) && configuredCoverageRate >= 0
+				? configuredCoverageRate
+				: 1
 		let finalIsk = BigInt(Math.floor(Number(rawCalculated) * coverageRate))
 
 		if (config?.maxPayoutAmount) {
-			const cap = BigInt(config.maxPayoutAmount)
-			if (finalIsk > cap) finalIsk = cap
+			const cap = parseIntegerIsk(config.maxPayoutAmount)
+			if (cap > 0n && finalIsk > cap) finalIsk = cap
 		}
 
 		const finalValue = roundToMillion(String(finalIsk))

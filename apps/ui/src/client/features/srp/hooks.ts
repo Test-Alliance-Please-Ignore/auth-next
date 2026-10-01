@@ -827,6 +827,17 @@ export function useVerifyPaid() {
 	})
 }
 
+export function useRecalculateRequestValuation() {
+	const queryClient = useQueryClient()
+	return useMutation({
+		mutationFn: ({ id }: { id: string }) => api.recalculateSrpRequest(id),
+		onSuccess: (request: SRPRequestResponse) => {
+			queryClient.setQueryData(srpKeys.request(request.id), request)
+			void queryClient.invalidateQueries({ queryKey: srpKeys.pending() })
+		},
+	})
+}
+
 export function useAcknowledgeSrpPaymentMismatchAlert() {
 	const queryClient = useQueryClient()
 	return useMutation({

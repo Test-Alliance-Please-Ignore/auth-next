@@ -104,6 +104,7 @@ function makeSrpStub() {
 		}),
 		getRecentLossRefreshStatus: vi.fn().mockResolvedValue({ status: null, cooldownUntil: null }),
 		getRequest: vi.fn(),
+		recalculateRequestValuation: vi.fn(),
 		getRequestsByStatus: vi.fn().mockResolvedValue({ requests: [], total: 0 }),
 		getPendingPayments: vi.fn().mockResolvedValue([]),
 		markPaid: vi.fn(),
@@ -934,6 +935,39 @@ describe('srp routes - permissions', () => {
 
 		expect(response.status).toBe(200)
 		expect(srpStub.getRequest).toHaveBeenCalledWith('100001', 'staff-request-view', true)
+	})
+
+	it('restricts request valuation recalculation to SRP managers', async () => {
+		const app = createApp(makeUser({ id: 'reviewer-only' }))
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:srp:reviewer' }] as any)
+
+		const response = await app.request(
+			'/api/srp/requests/100001/recalculate',
+			{ method: 'POST' },
+			env
+		)
+
+		expect(response.status).toBe(403)
+		expect(srpStub.recalculateRequestValuation).not.toHaveBeenCalled()
+	})
+
+	it('allows SRP managers to recalculate a request valuation', async () => {
+		const app = createApp(makeUser({ id: 'manager-user' }))
+		getCachedUserPermissionsMock.mockResolvedValue([{ urn: 'urn:srp:manager' }] as any)
+		srpStub.recalculateRequestValuation.mockResolvedValue(makeRequest({ userId: 'owner-1' }))
+
+		const response = await app.request(
+			'/api/srp/requests/100001/recalculate',
+			{ method: 'POST' },
+			env
+		)
+
+		expect(response.status).toBe(200)
+		expect(srpStub.recalculateRequestValuation).toHaveBeenCalledWith(
+			'100001',
+			'manager-user',
+			'Pilot One'
+		)
 	})
 
 	it('rejects non-killmail request ids on request detail routes', async () => {
