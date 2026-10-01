@@ -465,7 +465,7 @@ export const srpCatalog = defineCatalog(
 				heading: 'Review: {{ship}} (#{{id}})',
 				verifyDescription: 'Confirm manual payment verification for request #{{id}}?',
 				recalculateDescription:
-					'Fetch the current killmail and replace this request’s stored valuation?',
+					'Fetch the current killmail and replace the stored valuation for request #{{id}}?',
 				revertDescription: 'Confirm state change: {{status}} for {{ship}}?',
 			},
 			queue: {
