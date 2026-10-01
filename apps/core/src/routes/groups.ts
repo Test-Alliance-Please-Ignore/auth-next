@@ -15,7 +15,7 @@ import {
 	triggerMumbleRefreshWorkflow,
 } from '../lib/workflow-triggers'
 import { requireAdmin, requireAllianceMember, requireAuth } from '../middleware/session'
-import { getAllManagedRolesForGuild } from '../services/discord.service'
+import { updateUserDiscordRoles } from '../services/discord.service'
 import {
 	dispatchGroupApplicationSubmittedAlert,
 	dispatchGroupInvitationAlert,
@@ -2173,20 +2173,9 @@ groups.post(
 				})
 			}
 
-			// Pass the complete server-scoped managed-role allowlist to the Discord
-			// worker. The group roles are only one managed source on a guild.
-			const managedRoleIds = [
-				...new Set([
-					...(await getAllManagedRolesForGuild(db, c.env, config.guildId)),
-					...config.roleIds,
-				]),
-			]
-
-			// Call Discord DO to invite and refresh roles for each member
-			const discordDO = getStub<Discord>(c.env.DISCORD, 'default')
-
 			let successCount = 0
 			let failedCount = 0
+			const discordDO = getStub<Discord>(c.env.DISCORD, 'default')
 
 			// Process members sequentially to avoid rate limiting
 			for (const user of usersWithDiscord) {
@@ -2204,20 +2193,12 @@ groups.post(
 						continue
 					}
 
-					// Then update roles — admin-initiated refresh allows removal of roles no longer granted
-					const results = await discordDO.updateUserRoles(
-						user.id,
-						[
-							{
-								guildId: config.guildId,
-								roleIds: config.roleIds,
-								managedRoleIds,
-							},
-						],
-						true
-					)
+					// Reconcile every managed role source on the guild. Passing only this
+					// group's role list would remove valid corporation, auto-apply, or
+					// other group roles when removal is enabled.
+					const results = await updateUserDiscordRoles(c.env, user.id, [config.guildId], true)
 
-					if (results[0]?.success) {
+					if (results.results[0]?.success) {
 						successCount++
 					} else {
 						failedCount++
