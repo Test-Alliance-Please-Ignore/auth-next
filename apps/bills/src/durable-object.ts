@@ -213,21 +213,25 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 		authorization?: BillMutationAuthorization
 	): Promise<Bill> {
 		const issued = await this.billService.issueBill(actorUserId, billId, authorization)
+		await this.enqueueIssuedBillNotification(issued.id)
+		return issued
+	}
+
+	private async enqueueIssuedBillNotification(billId: string): Promise<void> {
 		try {
-			const enqueueResult = await this.enqueueBillNotificationEvent(issued.id, 'issued', {
+			const enqueueResult = await this.enqueueBillNotificationEvent(billId, 'issued', {
 				source: 'issue_bill',
 			})
 			if (enqueueResult.recipientCount > 0) {
-				await this.dispatchImmediateNotificationWorkflows(issued.id, 'issued')
+				await this.dispatchImmediateNotificationWorkflows(billId, 'issued')
 			}
 		} catch (error) {
 			// Notification enqueue is intentionally non-blocking for bill issuance.
 			this.logger.error('[BillsDO] Failed to enqueue issued bill notifications', {
-				billId: issued.id,
+				billId,
 				error: error instanceof Error ? error.message : String(error),
 			})
 		}
-		return issued
 	}
 
 	async enqueueBillNotificationEvent(
@@ -426,7 +430,11 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 		groupBillId: string,
 		authorization?: BillMutationAuthorization
 	): Promise<GroupBillOperationResult> {
-		return this.billService.issueGroupBill(actorUserId, groupBillId, authorization)
+		const result = await this.billService.issueGroupBill(actorUserId, groupBillId, authorization)
+		for (const bill of result.bills) {
+			await this.enqueueIssuedBillNotification(bill.id)
+		}
+		return result
 	}
 
 	async cancelGroupBill(
@@ -686,7 +694,7 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 						scheduleResult.ownerId,
 						billData
 					)
-					await this.billService.issueBill(scheduleResult.ownerId, bill.id)
+					await this.issueBill(scheduleResult.ownerId, bill.id)
 					createdBills.push(bill)
 				}
 
@@ -720,7 +728,7 @@ export class BillsDO extends DurableObject<Env> implements Bills {
 			)
 
 			// Auto-issue the bill
-			await this.billService.issueBill(scheduleResult.ownerId, bill.id)
+			await this.issueBill(scheduleResult.ownerId, bill.id)
 
 			// Update schedule after successful execution
 			await this.scheduleService.updateScheduleAfterExecution(scheduleId, bill.id, true)

@@ -185,6 +185,7 @@ export class UserDiscordRefreshWorkflow extends WorkflowEntrypoint<
 				totalInvited: refreshResult.totalInvited,
 				totalUpdated: refreshResult.totalUpdated,
 				totalFailed: refreshResult.totalFailed,
+				results: refreshResult.results,
 			}
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : String(error)
