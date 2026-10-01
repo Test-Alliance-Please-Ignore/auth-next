@@ -119,10 +119,10 @@ export function CreateRequestForm({
 		defaultValues: { killmailId, killmailHash, characterId, contextText: '' },
 	})
 
-	const displayVictimItems = lossVictimItems?.length
-		? normalizeVictimItems(lossVictimItems)
-		: preview?.victimItems?.length
-			? normalizePreviewVictimItems(preview.victimItems)
+	const displayVictimItems = preview?.victimItems?.length
+		? normalizePreviewVictimItems(preview.victimItems)
+		: lossVictimItems?.length
+			? normalizeVictimItems(lossVictimItems)
 			: []
 	const fittingItems = transformKillmailToFittingItems(
 		displayVictimItems,

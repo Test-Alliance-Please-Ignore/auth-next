@@ -24,7 +24,13 @@ import { RequestStatusBadge } from '../components/RequestStatusBadge'
 import { ReviewRequestForm } from '../components/ReviewRequestForm'
 import { SRPFeedback } from '../components/SRPFeedback'
 import { SRPRequestDetailSkeleton } from '../components/SRPRequestDetailSkeleton'
-import { useRequest, useRequestComments, useUpdateReviewState, useVerifyPaid } from '../hooks'
+import {
+	useRecalculateRequestValuation,
+	useRequest,
+	useRequestComments,
+	useUpdateReviewState,
+	useVerifyPaid,
+} from '../hooks'
 import { formatISK, getKillmailUrl, getRequestCharacterRole } from '../utils'
 
 function formatAppliedModifierValue(modifier: {
@@ -76,6 +82,7 @@ export default function ReviewRequestDetail() {
 	const { data: comments = [], refetch: refetchComments } = useRequestComments(id, canSeeInternal)
 	const updateState = useUpdateReviewState()
 	const verifyPaid = useVerifyPaid()
+	const recalculateValuation = useRecalculateRequestValuation()
 	const [showRevertConfirm, setShowRevertConfirm] = useState(false)
 
 	if (isLoading) {
@@ -105,6 +112,28 @@ export default function ReviewRequestDetail() {
 	const isPaid = request.requestStatus === 'paid' || request.requestStatus === 'payment_pending'
 	const canManuallyVerifyPaid =
 		hasPermission('urn:srp:manager') && request.requestStatus === 'payment_pending'
+	const canRecalculateValuation =
+		(isAdmin || hasPermission('urn:srp:manager')) &&
+		(request.requestStatus === 'pending' || request.requestStatus === 'needs_context')
+
+	const handleRecalculateValuation = () => {
+		requestConfirmation({
+			title: (t) => t('srp.reviewDetail.recalculateTitle'),
+			description: (t) => t('srp.reviewDetail.recalculateDescription', { id: request.id }),
+			confirmLabel: (t) => t('srp.reviewDetail.recalculate'),
+			intent: 'confirm',
+			onConfirm: async () => {
+				try {
+					await recalculateValuation.mutateAsync({ id: request.id })
+					toast.success(<SRPFeedback messageKey="srp.reviewDetail.recalculated" />)
+				} catch (err: any) {
+					toast.error(<SRPFeedback messageKey="srp.reviewDetail.recalculateFailed" />, {
+						description: err?.message ?? t('srp.common.unknownError'),
+					})
+				}
+			},
+		})
+	}
 	const appliedModifiers = request.appliedModifiers ?? []
 
 	const handleManualVerifyPaid = async () => {
@@ -183,6 +212,16 @@ export default function ReviewRequestDetail() {
 					}
 					action={
 						<div className="flex gap-2">
+							{canRecalculateValuation && (
+								<Button
+									variant="secondary"
+									size="sm"
+									onClick={handleRecalculateValuation}
+									disabled={recalculateValuation.isPending || updateState.isPending}
+								>
+									{t('srp.reviewDetail.recalculateTitle')}
+								</Button>
+							)}
 							<Button variant="ghost" size="sm" asChild>
 								<a href={getKillmailUrl(request.id)} target="_blank" rel="noopener noreferrer">
 									{t('srp.common.zkill')}

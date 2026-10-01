@@ -1167,6 +1167,38 @@ srp.get('/requests/:id', async (c) => {
 	return c.json(militaryEnrichedRequest)
 })
 
+/**
+ * Recalculate a pending SRP request from the current authoritative killmail.
+ * POST /api/srp/requests/:id/recalculate
+ */
+srp.post('/requests/:id/recalculate', async (c) => {
+	const user = c.get('user')!
+	const requestId = c.req.param('id')
+	if (!isValidSrpRequestId(requestId)) {
+		return c.json({ error: 'Invalid request id' }, 400)
+	}
+
+	const canManage = await hasSrpTierPermission(c.env, user.id, 'manager', user.is_admin)
+	if (!canManage) return c.json({ error: 'Requires manager-or-higher permissions' }, 403)
+
+	const srpStub = getStub<Srp>(c.env.SRP, 'default')
+	try {
+		const request = await srpStub.recalculateRequestValuation(
+			requestId,
+			user.id,
+			getPrimaryCharacterName(user)
+		)
+		return c.json(request)
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error)
+		if (message === 'Request not found') return c.json({ error: message }, 404)
+		if (message.includes('Only pending') || message.includes('does not match')) {
+			return c.json({ error: message }, 409)
+		}
+		throw error
+	}
+})
+
 // =============================================================================
 // REVIEW WORKFLOWS
 // =============================================================================
