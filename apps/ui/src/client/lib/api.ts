@@ -2628,6 +2628,8 @@ export interface CharacterPrivateDetail {
 	viewedAsAdmin: boolean
 	viewedAsCeoOrDirector: boolean
 	viewedAsHrViewer: boolean
+	viewedAsHrReviewer: boolean
+	hrRole: 'hr_admin' | 'hr_reviewer' | 'hr_viewer' | null
 	viewerRole: 'CEO' | 'Director' | null
 	skills: any
 	allSkills: any[]
@@ -2981,6 +2983,8 @@ export class ApiClient {
 		viewedAsAdmin: boolean
 		viewedAsCeoOrDirector: boolean
 		viewedAsHrViewer: boolean
+		viewedAsHrReviewer: boolean
+		hrRole: 'hr_admin' | 'hr_reviewer' | 'hr_viewer' | null
 		viewerRole: 'CEO' | 'Director' | null
 		canViewPrivateData: boolean
 		public: {

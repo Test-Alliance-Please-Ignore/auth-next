@@ -225,6 +225,8 @@ export const characterpagesCatalog = defineCatalog(
 			youCanViewPublicCharacterInformationAttributesCorporationHistory:
 				'You can view public character information (attributes, corporation history).',
 			viewingAsHrViewer: 'Viewing as HR Viewer',
+			viewingAsHrReviewer: 'Viewing as HR Reviewer',
+			youCanViewPrivateCharacterInformation: 'You can view private character information.',
 			youCanViewPublicCharacterInformation: 'You can view public character information.',
 			allianceIdValue1: 'Alliance ID: {{value1}}',
 			allianceValue1: 'Alliance #{{value1}}',
@@ -492,6 +494,8 @@ export const characterpagesCatalog = defineCatalog(
 			youCanViewPublicCharacterInformationAttributesCorporationHistory:
 				'Du kannst öffentliche Charakterinformationen einsehen (Attribute, Corporation-Verlauf).',
 			viewingAsHrViewer: 'Ansicht als HR-Leser',
+			viewingAsHrReviewer: 'Ansicht als HR-Prüfer',
+			youCanViewPrivateCharacterInformation: 'Du kannst private Charakterinformationen einsehen.',
 			youCanViewPublicCharacterInformation:
 				'Du kannst öffentliche Charakterinformationen einsehen.',
 			allianceIdValue1: 'Allianz-ID: {{value1}}',
@@ -760,6 +764,8 @@ export const characterpagesCatalog = defineCatalog(
 			youCanViewPublicCharacterInformationAttributesCorporationHistory:
 				'캐릭터의 공개 정보 (속성, 코퍼레이션 이력)를 볼 수 있습니다.',
 			viewingAsHrViewer: 'HR 조회자로 조회 중',
+			viewingAsHrReviewer: 'HR 검토자로 조회 중',
+			youCanViewPrivateCharacterInformation: '캐릭터의 비공개 정보를 볼 수 있습니다.',
 			youCanViewPublicCharacterInformation: '캐릭터의 공개 정보를 볼 수 있습니다.',
 			allianceIdValue1: '얼라이언스 ID: {{value1}}',
 			allianceValue1: '얼라이언스 #{{value1}}',
@@ -1029,6 +1035,8 @@ export const characterpagesCatalog = defineCatalog(
 			youCanViewPublicCharacterInformationAttributesCorporationHistory:
 				'Puedes ver información pública del personaje (atributos e historial de corporaciones).',
 			viewingAsHrViewer: 'Vista de observador de RR. HH.',
+			viewingAsHrReviewer: 'Vista de revisor de RR. HH.',
+			youCanViewPrivateCharacterInformation: 'Puedes ver información privada del personaje.',
 			youCanViewPublicCharacterInformation: 'Puedes ver información pública del personaje.',
 			allianceIdValue1: 'ID de alianza: {{value1}}',
 			allianceValue1: 'Alianza #{{value1}}',

@@ -11,7 +11,7 @@ import type { Context } from 'hono'
 import type { Core as CoreRpc } from '@repo/core'
 import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
-import type { Hr } from '@repo/hr'
+import type { Hr, HrRoleType } from '@repo/hr'
 import type { App, SessionUser } from '../context'
 
 type Db = NonNullable<Context<App>['var']['db']>
@@ -35,6 +35,7 @@ export type CharacterAccessContext = {
 	isCeoOrDirector: boolean
 	viewerRole: 'CEO' | 'Director' | null
 	hasHrViewerAccess: boolean
+	hrRole: HrRoleType | null
 	actualOwner: {
 		userId: string
 		characterName: string
@@ -42,6 +43,7 @@ export type CharacterAccessContext = {
 	viewedAsAdmin: boolean
 	viewedAsCeoOrDirector: boolean
 	viewedAsHrViewer: boolean
+	viewedAsHrReviewer: boolean
 }
 
 export type CharacterAccessTargetOwner = NonNullable<CharacterAccessContext['targetOwner']>
@@ -89,6 +91,7 @@ function canViewCharacterSharedDetails(access: {
 	isAdmin: boolean
 	isHrAuditor: boolean
 	hasHrViewerAccess: boolean
+	hrRole: HrRoleType | null
 	isCeoOrDirector: boolean
 }): boolean {
 	return (
@@ -101,7 +104,13 @@ function canViewCharacterSharedDetails(access: {
 }
 
 export function canViewCharacterPrivateDetails(access: CharacterAccessContext): boolean {
-	return canViewCharacterSharedDetails(access)
+	return (
+		access.isActualOwner ||
+		access.isAdmin ||
+		access.isHrAuditor ||
+		access.isCeoOrDirector ||
+		access.hasHrViewerAccess
+	)
 }
 
 export function canAccessCharacterPrivateData(access: CharacterAccessContext): boolean {
@@ -186,6 +195,7 @@ export async function resolveCharacterAccessContext(
 	let isCeoOrDirector = false
 	let viewerRole: 'CEO' | 'Director' | null = null
 	let hasHrViewerAccess = false
+	let hrRole: HrRoleType | null = null
 
 	if (!isActualOwner && !isAdmin && !isHrAuditor) {
 		const hr = getStub<Hr>(c.env.HR, 'default')
@@ -238,6 +248,25 @@ export async function resolveCharacterAccessContext(
 					try {
 						if (await hr.checkPermission(user.id, candidate.corporationId, 'hr_viewer')) {
 							hasHrViewerAccess = true
+							try {
+								const activeRoles = (
+									await hr.getUserRoles(user.id, candidate.corporationId)
+								).filter((role) => role.isActive)
+								const roleHierarchy: Record<HrRoleType, number> = {
+									hr_viewer: 1,
+									hr_reviewer: 2,
+									hr_admin: 3,
+								}
+								hrRole = activeRoles.reduce<HrRoleType | null>((highest, role) => {
+									if (!highest || roleHierarchy[role.role] > roleHierarchy[highest])
+										return role.role
+									return highest
+								}, null)
+							} catch {
+								// Preserve access if role detail is temporarily unavailable; the minimum
+								// permission check remains authoritative for public profile access.
+								hrRole = 'hr_viewer'
+							}
 							logger.info('[Character Detail] HR access granted', {
 								characterId: characterIdStr,
 								userId: user.id,
@@ -308,6 +337,7 @@ export async function resolveCharacterAccessContext(
 		isAdmin,
 		isHrAuditor,
 		hasHrViewerAccess,
+		hrRole,
 		isCeoOrDirector,
 	})
 
@@ -319,7 +349,13 @@ export async function resolveCharacterAccessContext(
 	const viewedAsAdmin = isAdmin && !isActualOwner
 	const viewedAsCeoOrDirector = isCeoOrDirector && !isActualOwner
 	const viewedAsHrViewer =
-		hasHrViewerAccess && !isActualOwner && !isAdmin && !isHrAuditor && !isCeoOrDirector
+		hrRole === 'hr_viewer' && !isActualOwner && !isAdmin && !isHrAuditor && !isCeoOrDirector
+	const viewedAsHrReviewer =
+		(hrRole === 'hr_reviewer' || hrRole === 'hr_admin') &&
+		!isActualOwner &&
+		!isAdmin &&
+		!isHrAuditor &&
+		!isCeoOrDirector
 
 	if (viewedAsAdmin) {
 		try {
@@ -350,9 +386,11 @@ export async function resolveCharacterAccessContext(
 		isCeoOrDirector,
 		viewerRole,
 		hasHrViewerAccess,
+		hrRole,
 		actualOwner,
 		viewedAsAdmin,
 		viewedAsCeoOrDirector,
 		viewedAsHrViewer,
+		viewedAsHrReviewer,
 	}
 }
