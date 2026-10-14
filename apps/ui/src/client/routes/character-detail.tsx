@@ -201,7 +201,8 @@ export default function CharacterDetailPage() {
 		character.viewedAsAdmin ||
 		isHrAuditor ||
 		character.viewedAsCeoOrDirector ||
-		character.viewedAsHrViewer
+		character.viewedAsHrViewer ||
+		character.viewedAsHrReviewer
 	const corporationMembersLink =
 		!user?.is_admin &&
 		corporationIdForLink &&
@@ -278,6 +279,22 @@ export default function CharacterDetailPage() {
 								<p className="font-medium">{t('characterpages.viewingAsHrViewer')}</p>
 								<p className="text-sm text-muted-foreground">
 									{t('characterpages.youCanViewPublicCharacterInformation')}
+								</p>
+							</div>
+						</div>
+					</CardContent>
+				</Card>
+			)}
+
+			{character.viewedAsHrReviewer && (
+				<Card className="border-emerald-500/50 bg-emerald-500/10">
+					<CardContent className="pt-6">
+						<div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
+							<Users className="h-5 w-5" />
+							<div>
+								<p className="font-medium">{t('characterpages.viewingAsHrReviewer')}</p>
+								<p className="text-sm text-muted-foreground">
+									{t('characterpages.youCanViewPrivateCharacterInformation')}
 								</p>
 							</div>
 						</div>

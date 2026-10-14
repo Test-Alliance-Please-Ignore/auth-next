@@ -10,6 +10,7 @@ import type { SessionUser } from '../../context'
 const hoisted = vi.hoisted(() => ({
 	hr: {
 		checkPermission: vi.fn(),
+		getUserRoles: vi.fn(),
 		getUserHrCorporations: vi.fn(),
 		listApplications: vi.fn(),
 	},
@@ -173,6 +174,9 @@ describe('character detail access for HR page viewers', () => {
 		db = createDb()
 
 		hoisted.hr.checkPermission.mockResolvedValue(true)
+		hoisted.hr.getUserRoles.mockResolvedValue([
+			{ role: 'hr_reviewer', isActive: true, corporationId: '2001' },
+		])
 		hoisted.hr.getUserHrCorporations.mockResolvedValue([])
 		hoisted.hr.listApplications.mockResolvedValue([])
 		hoisted.groups.getUserPermissions.mockResolvedValue([])
@@ -263,7 +267,9 @@ describe('character detail access for HR page viewers', () => {
 
 		expect(res.status).toBe(200)
 		const body = (await res.json()) as any
-		expect(body.viewedAsHrViewer).toBe(true)
+		expect(body.viewedAsHrViewer).toBe(false)
+		expect(body.viewedAsHrReviewer).toBe(true)
+		expect(body.hrRole).toBe('hr_reviewer')
 		expect(body.canViewPrivateData).toBe(true)
 		expect(body.public.skills).toBeUndefined()
 		expect(body.private).toBeUndefined()
@@ -297,6 +303,20 @@ describe('character detail access for HR page viewers', () => {
 		expect(body.skills?.totalSp).toBe(123456)
 		expect(body.private.wallet).toBe(123456789)
 		expect(body.private.status).toEqual({ state: 'active' })
+	})
+
+	it('allows HR viewers and reviewers private profile data within their authorized scope', async () => {
+		hoisted.hr.getUserRoles.mockResolvedValue([
+			{ role: 'hr_viewer', isActive: true, corporationId: '2001' },
+		])
+
+		const app = createApp(makeUser(), db)
+		const overview = await app.request('/api/characters/2001', {}, env)
+		const privateResponse = await app.request('/api/characters/2001/private', {}, env)
+
+		expect(overview.status).toBe(200)
+		expect(((await overview.json()) as any).canViewPrivateData).toBe(true)
+		expect(privateResponse.status).toBe(200)
 	})
 
 	it('returns not found when the character is missing from our data', async () => {

@@ -396,6 +396,8 @@ async function getCharacterPrivateResponse(
 			viewedAsAdmin: access.viewedAsAdmin,
 			viewedAsCeoOrDirector: access.viewedAsCeoOrDirector,
 			viewedAsHrViewer: access.viewedAsHrViewer,
+			viewedAsHrReviewer: access.viewedAsHrReviewer,
+			hrRole: access.hrRole,
 			viewerRole: access.viewerRole,
 			canViewPrivateData: canAccessCharacterPrivateData(access),
 			skills: enrichedSkills,
@@ -788,6 +790,8 @@ app.get('/:characterId', requireAuth(), async (c) => {
 			viewedAsAdmin: access.viewedAsAdmin,
 			viewedAsCeoOrDirector: access.viewedAsCeoOrDirector,
 			viewedAsHrViewer: access.viewedAsHrViewer,
+			viewedAsHrReviewer: access.viewedAsHrReviewer,
+			hrRole: access.hrRole,
 			viewerRole: access.viewerRole,
 			canViewPrivateData: canAccessCharacterPrivateData(access),
 			public: {
