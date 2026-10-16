@@ -94,6 +94,7 @@ function makeFakeThis(client: FakeClient, overrides: Record<string, unknown> = {
 		scheduleUserSyncAlarm: proto.scheduleUserSyncAlarm,
 		cleanupUserSyncStates: proto.cleanupUserSyncStates,
 		findProvisionedSubjects: proto.findProvisionedSubjects,
+		getProjectedUsers: proto.getProjectedUsers,
 		deleteAccountsInner: proto.deleteAccountsInner,
 		queuePendingDeletes: proto.queuePendingDeletes,
 		alarm: proto.alarm,
@@ -368,12 +369,12 @@ describe('MumbleDO.syncUserGroups', () => {
 
 		expect(client.getLocalAccount).not.toHaveBeenCalled()
 		expect(client.getUserState).toHaveBeenCalledTimes(1)
-		// 250 provisioned assignments => 2 chunks of <=200
+		// Queued projections still represent provisioned local accounts.
 		expect(client.assignGroups).toHaveBeenCalledTimes(2)
 		expect(client.assignGroups.mock.calls[0]![1]).toHaveLength(200)
-		expect(client.assignGroups.mock.calls[1]![1]).toHaveLength(50)
-		expect(result.synced).toHaveLength(250)
-		expect(result.skipped).toEqual(['queued-user', 'unprovisioned'])
+		expect(client.assignGroups.mock.calls[1]![1]).toHaveLength(51)
+		expect(result.synced).toHaveLength(251)
+		expect(result.skipped).toEqual(['unprovisioned'])
 	})
 
 	it('returns immediately for empty input', async () => {
@@ -385,6 +386,34 @@ describe('MumbleDO.syncUserGroups', () => {
 		)
 		expect(result).toEqual({ synced: [], skipped: [] })
 		expect(client.assignGroups).not.toHaveBeenCalled()
+	})
+})
+
+describe('MumbleDO.syncAccountProfiles', () => {
+	it('updates a queued account after a group write without changing its other fields', async () => {
+		const client = makeFakeClient()
+		client.getUserState.mockResolvedValue({
+			serverId: 'srv',
+			users: [{ ...SNAPSHOT, status: 'queued', groups: ['new-group'] }],
+		})
+		client.batchSync.mockResolvedValue({ serverId: 'srv', updated: [] })
+
+		const result = await MumbleDO.prototype.syncAccountProfiles.call(
+			makeFakeThis(client) as any,
+			'srv',
+			[{ subjectId: 'user-1', displayName: 'Pilot One [NEW]' }]
+		)
+
+		expect(result).toEqual({ synced: ['user-1'], skipped: [] })
+		expect(client.batchSync).toHaveBeenCalledWith('srv', [
+			{
+				subjectId: 'user-1',
+				loginName: 'pilot_one',
+				displayName: 'Pilot One [NEW]',
+				enabled: true,
+				groups: ['new-group'],
+			},
+		])
 	})
 })
 

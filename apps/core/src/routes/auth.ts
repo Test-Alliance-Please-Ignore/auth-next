@@ -14,6 +14,7 @@ import { getCachedUserPermissions } from '../lib/groups-cache'
 import { extractClientIp, recordUserIpAddress } from '../lib/ip-tracking'
 import {
 	triggerDirectorHealthRecheckWorkflow,
+	triggerMumbleRefreshWorkflow,
 	triggerUserRefreshWorkflow,
 } from '../lib/workflow-triggers'
 import { requireAuth } from '../middleware/session'
@@ -317,6 +318,22 @@ async function hydrateAndReconcileUserRoles(
 			characterId,
 			error: toErrorMessage(error),
 		})
+	}
+	if (affiliation) {
+		// Hydration already persisted the affiliation. Reconcile Mumble after
+		// roles as well, since the later user refresh may see no remaining delta.
+		waitUntilWithTelemetry(
+			c.executionCtx,
+			'auth.mumble-access-refresh',
+			() =>
+				triggerMumbleRefreshWorkflow({
+					env: c.env,
+					userIds: [userId],
+					source: 'auth-character-affiliation-changed',
+					forceAccessReconciliation: true,
+				}),
+			{ userId, characterId }
+		)
 	}
 
 	return affiliation

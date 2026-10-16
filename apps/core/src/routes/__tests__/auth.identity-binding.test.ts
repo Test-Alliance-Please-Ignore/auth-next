@@ -644,6 +644,12 @@ describe('GET /api/auth/callback - character owner hash is enforced on login', (
 	})
 
 	it('marks an already-linked character token valid when it is reauthorized', async () => {
+		vi.mocked(hydrateCharacterAffiliation).mockResolvedValue({
+			characterId: 'char-1',
+			characterName: 'Pilot',
+			corporationId: 'outside-corp',
+			allianceId: null,
+		})
 		const { updateWhere } = mockDb({
 			state: 'state-1',
 			flowType: 'character',
@@ -696,6 +702,13 @@ describe('GET /api/auth/callback - character owner hash is enforced on login', (
 			},
 		})
 		expect(updateWhere).toHaveBeenCalled()
+		const mumbleRefreshCall = vi
+			.mocked(waitUntilWithTelemetry)
+			.mock.calls.findIndex((call) => call[1] === 'auth.mumble-access-refresh')
+		expect(mumbleRefreshCall).toBeGreaterThanOrEqual(0)
+		expect(
+			vi.mocked(waitUntilWithTelemetry).mock.invocationCallOrder[mumbleRefreshCall]
+		).toBeGreaterThan(vi.mocked(reconcileUserCoreMembershipRoles).mock.invocationCallOrder[0])
 	})
 
 	it('rejects a character-link callback when the state owner is blocklisted', async () => {

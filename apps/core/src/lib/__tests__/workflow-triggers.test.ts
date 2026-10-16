@@ -1,9 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { isMumbleFeatureEnabled } from '../mumble-feature'
 import {
 	createDirectorHealthRecheckWorkflowId,
 	createDiscordRefreshWorkflowId,
+	createMumbleRefreshWorkflowId,
 	createUserRefreshWorkflowId,
+	triggerMumbleRefreshWorkflow,
 	triggerUserRefreshWorkflow,
 } from '../workflow-triggers'
 
@@ -11,6 +14,9 @@ const createWorkflowMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@repo/workflow-utils', () => ({
 	createWorkflow: createWorkflowMock,
+}))
+vi.mock('../mumble-feature', () => ({
+	isMumbleFeatureEnabled: vi.fn(),
 }))
 
 describe('Director health recheck workflow IDs', () => {
@@ -25,6 +31,40 @@ describe('Director health recheck workflow IDs', () => {
 		)
 		expect(createDirectorHealthRecheckWorkflowId('123', '456', now)).not.toBe(
 			createDirectorHealthRecheckWorkflowId('123', '789', now)
+		)
+	})
+})
+
+describe('Mumble refresh workflow IDs', () => {
+	it('does not collide for equal-sized batches created in the same millisecond', () => {
+		const now = vi.spyOn(Date, 'now').mockReturnValue(1_699_999_801_000)
+		try {
+			expect(createMumbleRefreshWorkflowId('corp-member-flag-disabled', ['a', 'b'])).not.toBe(
+				createMumbleRefreshWorkflowId('corp-member-flag-disabled', ['c', 'd'])
+			)
+		} finally {
+			now.mockRestore()
+		}
+	})
+})
+
+describe('Mumble access reconciliation trigger', () => {
+	it('starts a revocation check even when the Mumble UI feature is off', async () => {
+		vi.mocked(isMumbleFeatureEnabled).mockResolvedValue(false)
+		createWorkflowMock.mockResolvedValue({ id: 'mumble-wf-1' })
+		const env = { USER_MUMBLE_REFRESH_WORKFLOW: {} } as any
+
+		const result = await triggerMumbleRefreshWorkflow({
+			env,
+			userIds: ['user-1'],
+			source: 'corp-member-flag-disabled',
+			forceAccessReconciliation: true,
+		})
+
+		expect(result.status).toBe('triggered')
+		expect(createWorkflowMock).toHaveBeenCalledWith(
+			env.USER_MUMBLE_REFRESH_WORKFLOW,
+			expect.anything()
 		)
 	})
 })

@@ -3,7 +3,7 @@ import { and, eq } from '@repo/db-utils'
 import { getStub } from '@repo/do-utils'
 import { getPublicEsiInstance } from '@repo/esi'
 import { logger } from '@repo/hono-helpers'
-import { parseMumbleError } from '@repo/mumble'
+import { formatMumbleError, parseMumbleError } from '@repo/mumble'
 
 import { createDb } from '../db'
 import { mumbleTempopGuests, mumbleTempops, userCharacters, users } from '../db/schema'
@@ -51,8 +51,9 @@ interface MumbleIdentity {
 	loginName: string
 }
 
-interface GetUserGroupNamesOptions {
-	forceEmptyGroups?: boolean
+interface UserMumbleGroups {
+	groups: string[]
+	eligible: boolean
 }
 
 /**
@@ -210,22 +211,14 @@ export function getMumbleConnectionInfo(env: Env): { host: string; port: number 
 	return { host: env.MUMBLE_HOST, port: Number(env.MUMBLE_PORT) }
 }
 
-/** Fetch the user's current auth-next group names. */
-async function getUserGroupNames(
-	env: Env,
-	userId: string,
-	options?: GetUserGroupNamesOptions
-): Promise<string[]> {
-	if (options?.forceEmptyGroups === true) {
-		return []
-	}
-
+/** Resolve current Mumble eligibility and groups from persisted auth-next state. */
+async function getUserGroupNames(env: Env, userId: string): Promise<UserMumbleGroups> {
 	if (await isUserBlacklisted(env, userId)) {
-		return []
+		return { groups: [], eligible: false }
 	}
 
 	const db = createDb(env.DATABASE_URL)
-	const [user, hasAttachment, roleAttachments] = await Promise.all([
+	const [user, hasAttachment] = await Promise.all([
 		db.query.users.findFirst({
 			where: eq(users.id, userId),
 			columns: {
@@ -233,15 +226,15 @@ async function getUserGroupNames(
 			},
 		}),
 		hasMemberCorporationAttachment(db, userId),
-		getCachedUserRoles(env, userId),
 	])
+	if (!user || (!hasAttachment && !user.is_admin)) {
+		return { groups: [], eligible: false }
+	}
+
+	const roleAttachments = await getCachedUserRoles(env, userId)
 	const isAllianceMember = roleAttachments.some(
 		(attachment) => attachment.role.name === ROLE_CORE_ALLIANCE_MEMBER
 	)
-
-	if (!hasAttachment && !user?.is_admin) {
-		return []
-	}
 
 	const memberships = hasAttachment
 		? await getStub<Groups>(env.GROUPS, 'default').getUserMemberships(userId)
@@ -258,7 +251,7 @@ async function getUserGroupNames(
 		groups.push('Server Admin')
 	}
 
-	return [...new Set(groups)]
+	return { groups: [...new Set(groups)], eligible: true }
 }
 
 /** Get the user's Mumble account status, or null when not provisioned. */
@@ -311,9 +304,11 @@ export async function provisionMumbleAccount(
 	env: Env,
 	userId: string
 ): Promise<{ account: MumbleAccountStatus; password: string }> {
+	const { groups, eligible } = await getUserGroupNames(env, userId)
+	if (!eligible) {
+		throw new Error(formatMumbleError('unauthorized', 'User is not eligible for Mumble'))
+	}
 	const identity = await buildMumbleIdentity(env, userId)
-
-	const groups = await getUserGroupNames(env, userId)
 
 	return getMumbleStub(env).provisionAccount(env.MUMBLE_SERVER_ID, {
 		subjectId: userId,
@@ -325,20 +320,22 @@ export async function provisionMumbleAccount(
 
 /** Rotate a user's Mumble password; returns the new one-time password. */
 export async function resetMumblePassword(env: Env, userId: string): Promise<{ password: string }> {
+	const { eligible } = await getUserGroupNames(env, userId)
+	if (!eligible) {
+		throw new Error(formatMumbleError('unauthorized', 'User is not eligible for Mumble'))
+	}
 	return getMumbleStub(env).resetPassword(env.MUMBLE_SERVER_ID, userId)
 }
 
 /**
- * Push current group memberships for the given users to murmur-control.
- * Batch-first: gathers each user's groups, then makes a single mumble RPC
- * which the worker maps to chunked murmur-control requests. Users without a
+ * Reconcile current Mumble access for the given users. Ineligible accounts
+ * are deleted; eligible accounts receive current groups. Users without a
  * Mumble account are skipped inside the worker.
  */
 export async function syncUsersMumbleGroups(
 	env: Env,
 	userIds: string[],
-	reason?: string,
-	options?: GetUserGroupNamesOptions
+	reason?: string
 ): Promise<MumbleSyncGroupsResult> {
 	if (userIds.length === 0) {
 		return { synced: [], skipped: [] }
@@ -352,7 +349,7 @@ export async function syncUsersMumbleGroups(
 				return {
 					status: 'ok' as const,
 					userId,
-					groups: await getUserGroupNames(env, userId, options),
+					access: await getUserGroupNames(env, userId),
 				}
 			} catch (error) {
 				logger.error('[Mumble] Failed to gather groups for user', {
@@ -365,26 +362,34 @@ export async function syncUsersMumbleGroups(
 	)
 
 	const assignments: MumbleGroupAssignment[] = []
+	const toDelete: string[] = []
 	const failedUserIds: string[] = []
 	for (const result of lookupResults) {
 		if (result.status === 'ok') {
-			assignments.push({ subjectId: result.userId, groups: result.groups })
+			if (result.access.eligible) {
+				assignments.push({ subjectId: result.userId, groups: result.access.groups })
+			} else {
+				toDelete.push(result.userId)
+			}
 		} else {
 			failedUserIds.push(result.userId)
 		}
 	}
 
-	if (failedUserIds.length > 0 && assignments.length === 0) {
+	if (failedUserIds.length > 0 && assignments.length === 0 && toDelete.length === 0) {
 		throw new Error(
 			`Failed to gather groups for ${failedUserIds.length} user(s): ${failedUserIds.join(', ')}`
 		)
 	}
 
-	const syncResult = await getMumbleStub(env).syncUserGroups(
-		env.MUMBLE_SERVER_ID,
-		assignments,
-		reason
-	)
+	if (toDelete.length > 0) {
+		await revokeIneligibleMumbleAccounts(env, toDelete, reason)
+	}
+
+	const syncResult =
+		assignments.length > 0
+			? await getMumbleStub(env).syncUserGroups(env.MUMBLE_SERVER_ID, assignments, reason)
+			: { synced: [], skipped: [] }
 
 	if (failedUserIds.length > 0) {
 		throw new Error(
@@ -392,7 +397,27 @@ export async function syncUsersMumbleGroups(
 		)
 	}
 
-	return syncResult
+	return { synced: syncResult.synced, skipped: [...syncResult.skipped, ...toDelete] }
+}
+
+/**
+ * Revoke accounts after a current eligibility check. The Mumble DO queues
+ * control-plane failures durably; transport failures propagate to workflow
+ * retries instead of silently leaving a live account behind.
+ */
+export async function revokeIneligibleMumbleAccounts(
+	env: Env,
+	userIds: string[],
+	reason?: string
+): Promise<MumbleDeleteResult> {
+	const result = await getMumbleStub(env).deleteAccounts(env.MUMBLE_SERVER_ID, userIds)
+	logger.info('[Mumble] Reconciled ineligible accounts', {
+		reason,
+		deleted: result.deleted,
+		notFound: result.notFound,
+		queued: result.queued,
+	})
+	return result
 }
 
 /**
@@ -494,19 +519,14 @@ export async function syncUsersMumbleProfiles(
  * Never throws — deletion of the auth-next user must not be blocked. On
  * murmur-control failure the mumble DO queues the deletion and retries by
  * alarm until confirmed, so a `queued` outcome is still eventually deleted.
+ * Revocation must run even when the UI feature flag is off: existing Mumble
+ * credentials remain valid until the server account is removed.
  */
 export async function deleteMumbleAccounts(
 	env: Env,
 	userIds: string[]
 ): Promise<MumbleDeleteResult | null> {
 	try {
-		if (!(await isMumbleFeatureEnabled(env))) {
-			logger.info('[Mumble] Skipped account deletion because feature is disabled', {
-				userIds,
-			})
-			return { deleted: [], notFound: [], queued: [] }
-		}
-
 		const result = await getMumbleStub(env).deleteAccounts(env.MUMBLE_SERVER_ID, userIds)
 		if (result.queued.length > 0) {
 			logger.warn('[Mumble] Account deletion queued for retry', {

@@ -889,26 +889,6 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 
 			if (isDeletedCharacter) {
 				await markCharacterDeletedEverywhere(db, c.env, characterIdStr)
-
-				const ownerUserId = character
-					? user.id
-					: (
-							await db.query.userCharacters.findFirst({
-								where: eq(userCharacters.characterId, characterIdStr),
-								columns: { userId: true },
-							})
-						)?.userId
-
-				if (ownerUserId) {
-					await triggerUserRefreshWorkflow({
-						db,
-						env: c.env,
-						userId: ownerUserId,
-						source: 'character-refresh-deleted',
-						bypassThrottle: true,
-						refreshMode: 'manual',
-					})
-				}
 			}
 		} catch (error) {
 			logger.error('Failed to refresh public character data:', error)
@@ -923,6 +903,32 @@ app.post('/:characterId/refresh', requireAuth(), async (c) => {
 			throw new Error(
 				`Failed to refresh public character data: ${error instanceof Error ? error.message : String(error)}`
 			)
+		}
+
+		// The public refresh advances EveCharacterData's snapshot. Reconcile
+		// core after every manual refresh, including live corporation moves,
+		// so the next scheduled EVE sync need not rediscover the same delta.
+		const ownerUserId = character
+			? user.id
+			: (
+					await db.query.userCharacters.findFirst({
+						where: eq(userCharacters.characterId, characterIdStr),
+						columns: { userId: true },
+					})
+				)?.userId
+
+		if (ownerUserId) {
+			const refresh = await triggerUserRefreshWorkflow({
+				db,
+				env: c.env,
+				userId: ownerUserId,
+				source: isDeletedCharacter ? 'character-refresh-deleted' : 'character-refresh-manual',
+				bypassThrottle: true,
+				refreshMode: 'manual',
+			})
+			if (refresh.status === 'failed') {
+				throw new Error(`Failed to queue core character refresh: ${refresh.error}`)
+			}
 		}
 
 		const tokenStatus = db
