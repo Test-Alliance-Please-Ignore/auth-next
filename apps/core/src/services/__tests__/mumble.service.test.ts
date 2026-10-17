@@ -7,7 +7,9 @@ import { createDb } from '../../db'
 import {
 	deriveLoginName,
 	enforceBlacklistedMumbleAccess,
+	provisionMumbleAccount,
 	provisionTempopGuest,
+	resetMumblePassword,
 	syncUsersMumbleGroups,
 	syncUsersMumbleProfiles,
 } from '../mumble.service'
@@ -107,7 +109,7 @@ describe('syncUsersMumbleGroups', () => {
 		MUMBLE_SERVER_ID: 'srv',
 	} as any
 
-	it('short-circuits to empty groups when the user lacks qualifying affiliation', async () => {
+	it('deletes an account when the user lacks qualifying affiliation', async () => {
 		createDbMock.mockReturnValue({
 			query: {
 				users: {
@@ -141,6 +143,7 @@ describe('syncUsersMumbleGroups', () => {
 
 		const mumbleStub = {
 			syncUserGroups: vi.fn().mockResolvedValue({ synced: ['user-1'], skipped: [] }),
+			deleteAccounts: vi.fn().mockResolvedValue({ deleted: ['user-1'], notFound: [], queued: [] }),
 		}
 
 		getStubMock.mockImplementation((binding: unknown) => {
@@ -153,11 +156,12 @@ describe('syncUsersMumbleGroups', () => {
 		await syncUsersMumbleGroups(env, ['user-1'])
 
 		expect(groupsStub.getUserMemberships).not.toHaveBeenCalled()
-		expect(mumbleStub.syncUserGroups).toHaveBeenCalledWith(
-			'srv',
-			[{ subjectId: 'user-1', groups: [] }],
-			undefined
+		expect(mumbleStub.deleteAccounts).toHaveBeenCalledWith('srv', ['user-1'])
+		expect(mumbleStub.syncUserGroups).not.toHaveBeenCalled()
+		await expect(provisionMumbleAccount(env, 'user-1')).rejects.toThrow(
+			'MUMBLE_ERROR:unauthorized:'
 		)
+		await expect(resetMumblePassword(env, 'user-1')).rejects.toThrow('MUMBLE_ERROR:unauthorized:')
 	})
 
 	it('adds Server Admin for site admins alongside affiliation groups', async () => {
@@ -216,7 +220,7 @@ describe('syncUsersMumbleGroups', () => {
 		)
 	})
 
-	it('short-circuits to empty groups when the user is blacklisted', async () => {
+	it('deletes an account when the user is blacklisted', async () => {
 		createDbMock.mockReturnValue({
 			query: {
 				users: {
@@ -240,6 +244,7 @@ describe('syncUsersMumbleGroups', () => {
 		}
 		const mumbleStub = {
 			syncUserGroups: vi.fn().mockResolvedValue({ synced: ['user-1'], skipped: [] }),
+			deleteAccounts: vi.fn().mockResolvedValue({ deleted: ['user-1'], notFound: [], queued: [] }),
 		}
 
 		getStubMock.mockImplementation((binding: unknown) => {
@@ -253,11 +258,8 @@ describe('syncUsersMumbleGroups', () => {
 
 		expect(hrStub.isUserBlacklisted).toHaveBeenCalledWith('user-1')
 		expect(groupsStub.getUserMemberships).not.toHaveBeenCalled()
-		expect(mumbleStub.syncUserGroups).toHaveBeenCalledWith(
-			'srv',
-			[{ subjectId: 'user-1', groups: [] }],
-			undefined
-		)
+		expect(mumbleStub.deleteAccounts).toHaveBeenCalledWith('srv', ['user-1'])
+		expect(mumbleStub.syncUserGroups).not.toHaveBeenCalled()
 	})
 
 	it('uses bounded concurrency when collecting memberships', async () => {
@@ -385,7 +387,7 @@ describe('enforceBlacklistedMumbleAccess', () => {
 			MUMBLE_SERVER_ID: 'srv',
 		} as any
 		const featuresStub = {
-			checkFlag: vi.fn().mockResolvedValue(true),
+			checkFlag: vi.fn().mockResolvedValue(false),
 		}
 		const mumbleStub = {
 			deleteAccounts: vi.fn().mockResolvedValue({
@@ -471,6 +473,49 @@ describe('syncUsersMumbleProfiles', () => {
 			{ subjectId: 'user-1', displayName: 'Main Pilot [ALP] [FC123]' },
 		])
 		expect(result).toEqual({ synced: ['user-1'], skipped: [] })
+	})
+
+	it('replaces the old corporation tag after the main character moves', async () => {
+		let corporationId = 'corp-1'
+		createDbMock.mockReturnValue({
+			query: {
+				users: {
+					findFirst: vi.fn().mockResolvedValue({
+						mainCharacterId: MAIN_CHARACTER_ID,
+						is_admin: false,
+					}),
+				},
+				userCharacters: {
+					findFirst: vi.fn(async () => ({ characterName: 'Main Pilot', corporationId })),
+				},
+			},
+		} as any)
+
+		const corpStub = {
+			getCorporationInfo: vi.fn(async (id: string) => ({
+				corporationId: id,
+				ticker: id === 'corp-1' ? 'OLD' : 'NEW',
+			})),
+		}
+		const mumbleStub = {
+			syncAccountProfiles: vi.fn().mockResolvedValue({ synced: ['user-1'], skipped: [] }),
+		}
+		getStubMock.mockImplementation((binding: unknown) => {
+			if (binding === env.FEATURES) return { checkFlag: async () => true } as any
+			if (binding === env.EVE_CORPORATION_DATA) return corpStub as any
+			if (binding === env.GROUPS) return { getUserMemberships: async () => [] } as any
+			if (binding === env.MUMBLE) return mumbleStub as any
+			throw new Error('unexpected stub binding')
+		})
+
+		await syncUsersMumbleProfiles(env, ['user-1'])
+		corporationId = 'corp-2'
+		await syncUsersMumbleProfiles(env, ['user-1'])
+
+		expect(mumbleStub.syncAccountProfiles.mock.calls).toEqual([
+			['srv', [{ subjectId: 'user-1', displayName: 'Main Pilot [OLD]' }]],
+			['srv', [{ subjectId: 'user-1', displayName: 'Main Pilot [NEW]' }]],
+		])
 	})
 
 	it('appends SA to admin display metadata after the ticker', async () => {

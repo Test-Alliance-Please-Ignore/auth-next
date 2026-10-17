@@ -18,6 +18,7 @@ import {
 	corporationSyncStatusCache,
 } from '../../lib/corporation-list-cache'
 import { getCachedUserPermissions } from '../../lib/groups-cache'
+import { triggerMumbleRefreshWorkflow } from '../../lib/workflow-triggers'
 import { requireAdmin, requireAuth } from '../../middleware/session'
 import corporationsAlertsRoutes from './alerts-routes'
 import corporationsDirectorsRoutes from './directors-routes'
@@ -32,12 +33,38 @@ import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EveCorporationData } from '@repo/eve-corporation-data'
 import type { Groups } from '@repo/groups'
 import type { Hr } from '@repo/hr'
-import type { App } from '../../context'
+import type { App, Env } from '../../context'
 
 const app = new Hono<App>()
 const MS_PER_DAY = 86_400_000
 const ACTIVE_MEMBER_THRESHOLD_MS = 7 * MS_PER_DAY
 const DISCORD_USERNAME_LOOKUP_BATCH_SIZE = 25
+const MUMBLE_REFRESH_BATCH_SIZE = 100
+
+async function queueMemberCorpMumbleRefresh(
+	env: Env,
+	corporationId: string,
+	userIds: string[],
+	source: string,
+	forceAccessReconciliation = false
+): Promise<void> {
+	for (let offset = 0; offset < userIds.length; offset += MUMBLE_REFRESH_BATCH_SIZE) {
+		const result = await triggerMumbleRefreshWorkflow({
+			env,
+			userIds: userIds.slice(offset, offset + MUMBLE_REFRESH_BATCH_SIZE),
+			source,
+			forceAccessReconciliation,
+		})
+		if (result.status === 'failed') {
+			logger.error('[Corporations] Failed to queue Mumble refresh after member-corp change', {
+				corporationId,
+				source,
+				error: result.error,
+			})
+			throw new Error(`Failed to queue Mumble refresh: ${result.error}`)
+		}
+	}
+}
 
 function cloneRpcResult<T>(result: T): T {
 	if (result === null || (typeof result !== 'object' && typeof result !== 'function')) {
@@ -2125,6 +2152,27 @@ app.put('/:corporationId', requireAuth(), requireAdmin(), async (c) => {
 			.returning()
 		clearCorporationListCache()
 
+		// The membership flag is now persisted, so Mumble reconciliation sees the
+		// new eligibility state. Queuing this before the update can retain accounts.
+		if (memberCorpStatusChanged || isMemberCorporation === false) {
+			// Explicit false requests also repair a previous queue failure after
+			// the flag was persisted, without needing another flag transition.
+			const linkedUsers = await db
+				.select({ userId: userCharacters.userId })
+				.from(userCharacters)
+				.where(eq(userCharacters.corporationId, corporationId))
+			const linkedUserIds = [...new Set(linkedUsers.map((row) => row.userId))]
+			if (linkedUserIds.length > 0) {
+				await queueMemberCorpMumbleRefresh(
+					c.env,
+					corporationId,
+					linkedUserIds,
+					isMemberCorporation ? 'corp-member-flag-enabled' : 'corp-member-flag-disabled',
+					!isMemberCorporation
+				)
+			}
+		}
+
 		// Update Durable Object if character assignment changed
 		if (assignedCharacterId && assignedCharacterName) {
 			try {
@@ -2186,8 +2234,30 @@ app.delete('/:corporationId', requireAuth(), requireAdmin(), async (c) => {
 	}
 
 	try {
+		const linkedUserIds = [
+			...new Set(
+				(
+					await db
+						.select({ userId: userCharacters.userId })
+						.from(userCharacters)
+						.where(eq(userCharacters.corporationId, corporationId))
+				).map((row) => row.userId)
+			),
+		]
+
 		await db.delete(managedCorporations).where(eq(managedCorporations.corporationId, corporationId))
 		clearCorporationListCache()
+		// Deleting the managed-corporation row removes the member eligibility
+		// basis for its linked users even though their character rows do not change.
+		if (linkedUserIds.length > 0) {
+			await queueMemberCorpMumbleRefresh(
+				c.env,
+				corporationId,
+				linkedUserIds,
+				'member-corporation-removed',
+				true
+			)
+		}
 
 		return c.json({ success: true })
 	} catch (error) {

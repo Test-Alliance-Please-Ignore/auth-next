@@ -154,4 +154,31 @@ describe('updateCharacterPublicInfo', () => {
 		})
 		expect(recorder.updates).toHaveLength(1)
 	})
+
+	it('reports a core affiliation change when character data already saw the new corporation', async () => {
+		refreshPublicCharacterData.mockResolvedValue({
+			success: true,
+			isDeleted: false,
+			characterName: 'Test Capsuleer',
+			currentCorporationId: '99000002',
+			currentAllianceId: '99000010',
+			previousCorporationId: '99000002',
+			previousAllianceId: '99000010',
+			affiliationChanged: false,
+		})
+		const recorder = createDbRecorder()
+		recorder.db.query.userCharacters.findFirst.mockResolvedValue({
+			corporationId: '99000001',
+			allianceId: '99000010',
+			isDeleted: false,
+		})
+
+		const result = await updateCharacterPublicInfo(
+			createCtx(recorder.db as unknown as WorkflowContext['db']),
+			'99000123'
+		)
+
+		expect(result.affiliationChanged).toBe(true)
+		expect(recorder.updates[0]).toMatchObject({ corporationId: '99000002' })
+	})
 })

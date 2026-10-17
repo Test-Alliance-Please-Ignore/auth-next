@@ -208,6 +208,8 @@ export interface TriggerMumbleRefreshOptions {
 	source: string
 	/** Optional jitter delay (seconds) to stagger batch runs. Passed through to the workflow's sleep step. */
 	jitterDelaySeconds?: number
+	/** Revocation checks must run even if the user-facing Mumble feature is disabled. */
+	forceAccessReconciliation?: boolean
 }
 
 export interface TriggerMumbleRefreshResult {
@@ -228,11 +230,14 @@ export function createMumbleRefreshWorkflowId(source: string, userIds: string[])
 			? (userIds[0]?.replace(/-/g, '').slice(0, 12) ?? 'unknown')
 			: `batch${userIds.length}`
 	const timeToken = Date.now().toString(36)
-	return `mumble-refresh-${sourceToken}-${userToken}-${timeToken}`
+	const uniqueToken = crypto.randomUUID().replaceAll('-', '').slice(0, 16)
+	return `mumble-refresh-${sourceToken}-${userToken}-${timeToken}-${uniqueToken}`
 }
 
 /**
- * Trigger a Mumble group refresh workflow for one or more users.
+ * Trigger a Mumble access refresh workflow for one or more users.
+ * Revocation callers can bypass the UI feature flag so existing credentials
+ * do not survive solely because the interface was turned off.
  * Returns immediately — does not block on workflow creation.
  * Logs errors but does not throw.
  */
@@ -241,9 +246,10 @@ export async function triggerMumbleRefreshWorkflow({
 	userIds,
 	source,
 	jitterDelaySeconds,
+	forceAccessReconciliation = false,
 }: TriggerMumbleRefreshOptions): Promise<TriggerMumbleRefreshResult> {
 	try {
-		if (!(await isMumbleFeatureEnabled(env))) {
+		if (!forceAccessReconciliation && !(await isMumbleFeatureEnabled(env))) {
 			logger.info('[WorkflowTrigger] Skipped Mumble refresh workflow because feature is disabled', {
 				userIds,
 				source,

@@ -10,8 +10,8 @@ import { userCharacters } from '../../../db/schema'
 import { markCharacterDeletedEverywhere } from '../../../services/character-deletion.service'
 import { getWorkflowLogger } from '../../context'
 
-import type { EveCharacterData } from '@repo/eve-character-data'
 import type { EsiTypeResolver } from '@repo/esi'
+import type { EveCharacterData } from '@repo/eve-character-data'
 import type { WorkflowContext } from '../../context'
 
 /**
@@ -73,12 +73,15 @@ export async function updateCharacterPublicInfo(
 		where: eq(userCharacters.characterId, characterId),
 		columns: { corporationId: true, allianceId: true, isDeleted: true },
 	})
+	// EveCharacterData compares with its own snapshot, which may already be
+	// current while core still holds an older affiliation. Core consumers need
+	// the delta against user_characters to refresh access and profile metadata.
 	const affiliationChanged =
-		publicRefreshResult.affiliationChanged ??
-		(!existingCharacter ||
-			existingCharacter.isDeleted === true ||
-			existingCharacter.corporationId !== affiliationCorporationId ||
-			(existingCharacter.allianceId ?? null) !== allianceId)
+		publicRefreshResult.affiliationChanged === true ||
+		!existingCharacter ||
+		existingCharacter.isDeleted === true ||
+		existingCharacter.corporationId !== affiliationCorporationId ||
+		(existingCharacter.allianceId ?? null) !== allianceId
 
 	// Persist the authoritative affiliation IDs before any best-effort name resolution.
 	await ctx.db

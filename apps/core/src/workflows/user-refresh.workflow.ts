@@ -241,6 +241,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 			characterId,
 		})
 
+		let affiliationChanged = false
 		try {
 			const updateCharacterPublicInfoResult = await step.do(
 				`update-character-public-info-${characterId}`,
@@ -257,6 +258,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 					return updateCharacterPublicInfo(ctx, characterId)
 				}
 			)
+			affiliationChanged = updateCharacterPublicInfoResult.affiliationChanged
 
 			if (updateCharacterPublicInfoResult.isDeleted) {
 				await step.do(
@@ -271,7 +273,12 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 							forceTokenValidation,
 							includeWalletJournal
 						)
-						return reconcileCharacterCorporationMembership(ctx, characterId, null)
+						return reconcileCharacterCorporationMembership(
+							ctx,
+							characterId,
+							null,
+							updateCharacterPublicInfoResult.affiliationChanged
+						)
 					}
 				)
 
@@ -297,7 +304,8 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 					return reconcileCharacterCorporationMembership(
 						ctx,
 						characterId,
-						updateCharacterPublicInfoResult.corporationId
+						updateCharacterPublicInfoResult.corporationId,
+						updateCharacterPublicInfoResult.affiliationChanged
 					)
 				}
 			)
@@ -348,6 +356,7 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 			return {
 				characterId,
 				status,
+				affiliationChanged,
 				error: errorMessage,
 			}
 		} finally {
@@ -501,17 +510,21 @@ export class UserRefreshWorkflow extends WorkflowEntrypoint<Env, UserRefreshWork
 				characterOutcomes.some(
 					(outcome) =>
 						outcome.characterId === mainCharacterId &&
-						outcome.status === 'success' &&
+						outcome.status !== 'deleted' &&
 						outcome.affiliationChanged === true
 				)
 			) {
 				try {
-					await syncUsersMumbleProfiles(this.env, [userId])
+					await step.do('sync-main-character-mumble-profile', CHARACTER_STEP_OPTIONS, () =>
+						syncUsersMumbleProfiles(this.env, [userId])
+					)
+					steps['sync-main-character-mumble-profile'] = 'ok'
 					logger.log('[Workflow] Refreshed Mumble profile metadata for main character change', {
 						...logContext,
 						mainCharacterId,
 					})
 				} catch (error) {
+					steps['sync-main-character-mumble-profile'] = 'failed'
 					logger.warn('[Workflow] Failed to refresh Mumble profile metadata; continuing', {
 						...logContext,
 						mainCharacterId,

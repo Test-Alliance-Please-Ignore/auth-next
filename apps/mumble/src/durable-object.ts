@@ -416,9 +416,9 @@ export class MumbleDO extends DurableObject<Env> implements Mumble {
 		}
 
 		const state = await client.getUserState(serverId)
-		const known = new Set(
-			state.users.filter((user) => user.status === 'reconciled').map((user) => user.subjectId)
-		)
+		// A queued projection was created by a persisted local-account write;
+		// group/profile updates may arrive before Murmur reconciliation finishes.
+		const known = new Set(state.users.map((user) => user.subjectId))
 		for (const subjectId of subjectIds) {
 			if (known.has(subjectId)) provisioned.add(subjectId)
 		}
@@ -426,18 +426,12 @@ export class MumbleDO extends DurableObject<Env> implements Mumble {
 	}
 
 	/**
-	 * Fetch reconciled projected users for the given server, keyed by subjectId.
-	 * Only reconciled rows are authoritative enough for profile/group sync.
+	 * Fetch projected local accounts for the given server, keyed by subjectId.
+	 * Queued rows retain the current local-account fields while Murmur catches up.
 	 */
-	private async getReconciledProjectedUsers(
-		serverId: string
-	): Promise<Map<string, UserProjectionSnapshot>> {
+	private async getProjectedUsers(serverId: string): Promise<Map<string, UserProjectionSnapshot>> {
 		const state = await this.client().getUserState(serverId)
-		return new Map(
-			state.users
-				.filter((user) => user.status === 'reconciled')
-				.map((user) => [user.subjectId, user])
-		)
+		return new Map(state.users.map((user) => [user.subjectId, user]))
 	}
 
 	async syncUserGroups(
@@ -483,16 +477,16 @@ export class MumbleDO extends DurableObject<Env> implements Mumble {
 
 		return this.serialize(async () => {
 			try {
-				const reconciled = await this.getReconciledProjectedUsers(serverId)
-				const toSync = assignments.filter((assignment) => reconciled.has(assignment.subjectId))
+				const projected = await this.getProjectedUsers(serverId)
+				const toSync = assignments.filter((assignment) => projected.has(assignment.subjectId))
 				const skipped = assignments
-					.filter((assignment) => !reconciled.has(assignment.subjectId))
+					.filter((assignment) => !projected.has(assignment.subjectId))
 					.map((assignment) => assignment.subjectId)
 
 				const client = this.client()
 				for (const batch of chunk(toSync, CHUNK_SIZE)) {
 					const accounts = batch.map((assignment) => {
-						const current = reconciled.get(assignment.subjectId)!
+						const current = projected.get(assignment.subjectId)!
 						return {
 							subjectId: current.subjectId,
 							loginName: current.loginName,

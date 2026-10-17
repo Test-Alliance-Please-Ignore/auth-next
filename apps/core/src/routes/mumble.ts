@@ -40,6 +40,8 @@ function mumbleErrorResponse(c: Context<App>, error: unknown) {
 			return c.json({ error: 'No available login name; contact an admin' }, 409)
 		case 'not_found':
 			return c.json({ error: 'Mumble account not found' }, 404)
+		case 'unauthorized':
+			return c.json({ error: 'Mumble access is no longer available' }, 403)
 		case 'busy':
 			c.header('Retry-After', '5')
 			return c.json({ error: 'Mumble service is busy, retry shortly' }, 429)

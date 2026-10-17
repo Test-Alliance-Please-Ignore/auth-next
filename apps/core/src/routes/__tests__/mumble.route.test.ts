@@ -173,6 +173,15 @@ describe('POST /api/mumble/account', () => {
 		expect(res.status).toBe(409)
 	})
 
+	it('rejects provisioning when stored membership no longer qualifies', async () => {
+		provisionMumbleAccountMock.mockRejectedValue(
+			new Error(formatMumbleError('unauthorized', 'User is not eligible for Mumble'))
+		)
+
+		const res = await makeApp(makeUser()).request('/api/mumble/account', { method: 'POST' }, env)
+		expect(res.status).toBe(403)
+	})
+
 	it('maps busy to 429 with Retry-After', async () => {
 		provisionMumbleAccountMock.mockRejectedValue(new Error(formatMumbleError('busy', 'busy')))
 

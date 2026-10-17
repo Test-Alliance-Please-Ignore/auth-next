@@ -4,7 +4,7 @@ import { getStub } from '@repo/do-utils'
 import { users } from '../../../db/schema'
 import { hasMemberCorporationAttachment } from '../../../lib/service-eligibility'
 import { triggerMumbleRefreshWorkflow } from '../../../lib/workflow-triggers'
-import { deleteMumbleAccounts } from '../../../services/mumble.service'
+import { revokeIneligibleMumbleAccounts } from '../../../services/mumble.service'
 import { getWorkflowLogger } from '../../context'
 
 import type { EveCorporationData } from '@repo/eve-corporation-data'
@@ -22,7 +22,8 @@ export interface ReconcileCorporationMembershipResult {
 export async function reconcileCharacterCorporationMembership(
 	ctx: WorkflowContext,
 	characterId: string,
-	corporationId: string | null
+	corporationId: string | null,
+	affiliationChanged = false
 ): Promise<ReconcileCorporationMembershipResult> {
 	const logger = getWorkflowLogger(ctx, 'reconcile-corporation-membership')
 	const corporationDataStub = getStub<EveCorporationData>(ctx.env.EVE_CORPORATION_DATA, 'default')
@@ -35,7 +36,7 @@ export async function reconcileCharacterCorporationMembership(
 	const membershipChanged =
 		result.removedFromCorporationIds.length > 0 || result.addedToCorporationId !== null
 
-	if (membershipChanged) {
+	if (membershipChanged || affiliationChanged) {
 		const [user, hasMemberCorporation] = await Promise.all([
 			ctx.db.query.users.findFirst({
 				where: eq(users.id, ctx.userId),
@@ -46,13 +47,16 @@ export async function reconcileCharacterCorporationMembership(
 		const shouldDeleteMumbleAccount = !user?.is_admin && !hasMemberCorporation
 
 		if (shouldDeleteMumbleAccount) {
-			await deleteMumbleAccounts(ctx.env, [ctx.userId])
+			await revokeIneligibleMumbleAccounts(ctx.env, [ctx.userId], 'corp-membership-reconciled')
 		} else {
-			await triggerMumbleRefreshWorkflow({
+			const refresh = await triggerMumbleRefreshWorkflow({
 				env: ctx.env,
 				userIds: [ctx.userId],
 				source: 'corp-membership-reconciled',
 			})
+			if (refresh.status === 'failed') {
+				throw new Error(`Failed to queue Mumble refresh: ${refresh.error}`)
+			}
 		}
 
 		logger.info('[Workflow] Reconciled Mumble access after corporation membership change', {
@@ -60,7 +64,7 @@ export async function reconcileCharacterCorporationMembership(
 			characterId,
 			hasMemberCorporation,
 			isAdmin: user?.is_admin === true,
-			mumbleAccountDeleted: shouldDeleteMumbleAccount,
+			mumbleDeletionRequested: shouldDeleteMumbleAccount,
 		})
 	}
 
