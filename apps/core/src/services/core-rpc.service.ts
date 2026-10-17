@@ -780,7 +780,7 @@ export class CoreRpcService {
 
 		// 4. Best-effort Mumble account deletion (disconnects sessions, unregisters
 		// the Murmur user). Never blocks auth-next user deletion.
-		await mumbleService.deleteMumbleAccounts(this.env, [userId])
+		await mumbleService.deleteMumbleAccounts(this.env, [userId], 'user_deleted')
 
 		// 5. Delete user (CASCADE handles linked characters and sessions)
 		await this.db.delete(users).where(eq(users.id, userId))

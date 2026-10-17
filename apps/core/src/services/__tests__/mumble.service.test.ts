@@ -5,6 +5,7 @@ import { getPublicEsiInstance } from '@repo/esi'
 
 import { createDb } from '../../db'
 import {
+	decideMumbleDeleteRetry,
 	deriveLoginName,
 	enforceBlacklistedMumbleAccess,
 	provisionMumbleAccount,
@@ -100,6 +101,130 @@ describe('deriveLoginName', () => {
 	})
 })
 
+describe('decideMumbleDeleteRetry', () => {
+	const env = {
+		DATABASE_URL: 'postgres://example',
+		MUMBLE_SERVER_ID: 'srv',
+		HR: {},
+		GROUPS: {},
+	} as any
+
+	it('cancels stale offboarding after renewed member-corporation eligibility', async () => {
+		setEligibleDbMock()
+		getStubMock.mockImplementation((binding: unknown) => {
+			if (binding === env.HR) return { isUserBlacklisted: vi.fn().mockResolvedValue(false) } as any
+			if (binding === env.GROUPS)
+				return {
+					getRolesFor: vi.fn().mockResolvedValue([]),
+					getUserMemberships: vi.fn().mockResolvedValue([]),
+				} as any
+			throw new Error('unexpected stub binding')
+		})
+
+		await expect(decideMumbleDeleteRetry(env, 'srv', USER_ID, 'offboarding')).resolves.toBe(
+			'cancel'
+		)
+	})
+
+	it('retries offboarding for a user with no member-corporation attachment', async () => {
+		createDbMock.mockReturnValue({
+			query: {
+				users: { findFirst: vi.fn().mockResolvedValue({ is_admin: false }) },
+				userCharacters: { findMany: vi.fn().mockResolvedValue([]) },
+				managedCorporations: { findMany: vi.fn().mockResolvedValue([]) },
+			},
+		} as any)
+		getStubMock.mockImplementation((binding: unknown) => {
+			if (binding === env.HR) return { isUserBlacklisted: vi.fn().mockResolvedValue(false) } as any
+			throw new Error('unexpected stub binding')
+		})
+
+		await expect(decideMumbleDeleteRetry(env, 'srv', USER_ID, 'offboarding')).resolves.toBe('retry')
+	})
+
+	it('preserves site-admin access unless the user is blacklisted', async () => {
+		createDbMock.mockReturnValue({
+			query: {
+				users: { findFirst: vi.fn().mockResolvedValue({ is_admin: true }) },
+				userCharacters: { findMany: vi.fn().mockResolvedValue([]) },
+				managedCorporations: { findMany: vi.fn().mockResolvedValue([]) },
+			},
+		} as any)
+		const isUserBlacklisted = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true)
+		getStubMock.mockImplementation((binding: unknown) => {
+			if (binding === env.HR) return { isUserBlacklisted } as any
+			if (binding === env.GROUPS) return { getRolesFor: vi.fn().mockResolvedValue([]) } as any
+			throw new Error('unexpected stub binding')
+		})
+
+		await expect(decideMumbleDeleteRetry(env, 'srv', USER_ID, 'offboarding')).resolves.toBe(
+			'cancel'
+		)
+		await expect(decideMumbleDeleteRetry(env, 'srv', USER_ID, 'blacklist')).resolves.toBe('retry')
+	})
+
+	it('defers user deletion until the Core user row is absent', async () => {
+		const findFirst = vi.fn().mockResolvedValueOnce({ id: USER_ID }).mockResolvedValueOnce(null)
+		createDbMock.mockReturnValue({ query: { users: { findFirst } } } as any)
+
+		await expect(decideMumbleDeleteRetry(env, 'srv', USER_ID, 'user_deleted')).resolves.toBe(
+			'defer'
+		)
+		await expect(decideMumbleDeleteRetry(env, 'srv', USER_ID, 'user_deleted')).resolves.toBe(
+			'retry'
+		)
+	})
+
+	it('defers a temp-op delete while its parent remains active, then retries after expiry', async () => {
+		const subjectId = `tempop:${USER_ID}:9001`
+		const parent = { status: 'active', expiresAt: new Date(Date.now() + 60_000) }
+		createDbMock.mockReturnValue({
+			query: {
+				mumbleTempopGuests: {
+					findFirst: vi.fn().mockResolvedValue({
+						status: 'deleted',
+						tempopId: USER_ID,
+						characterId: '9001',
+					}),
+				},
+				mumbleTempops: { findFirst: vi.fn().mockResolvedValue(parent) },
+			},
+		} as any)
+
+		await expect(decideMumbleDeleteRetry(env, 'srv', subjectId, 'tempop_terminal')).resolves.toBe(
+			'defer'
+		)
+		parent.expiresAt = new Date(Date.now() - 1)
+		await expect(decideMumbleDeleteRetry(env, 'srv', subjectId, 'tempop_terminal')).resolves.toBe(
+			'retry'
+		)
+	})
+
+	it('defers a temp-op orphan with inconsistent active guest state', async () => {
+		createDbMock.mockReturnValue({
+			query: {
+				mumbleTempopGuests: {
+					findFirst: vi.fn().mockResolvedValue({
+						status: 'active',
+						tempopId: USER_ID,
+						characterId: '9001',
+					}),
+				},
+				mumbleTempops: { findFirst: vi.fn().mockResolvedValue(null) },
+			},
+		} as any)
+		await expect(
+			decideMumbleDeleteRetry(env, 'srv', `tempop:${USER_ID}:9001`, 'tempop_terminal')
+		).resolves.toBe('defer')
+	})
+
+	it('defers when a pending key belongs to another Mumble server', async () => {
+		await expect(decideMumbleDeleteRetry(env, 'other', USER_ID, 'admin_manual')).resolves.toBe(
+			'defer'
+		)
+	})
+})
+
 describe('syncUsersMumbleGroups', () => {
 	const env = {
 		DATABASE_URL: 'postgres://example',
@@ -156,7 +281,7 @@ describe('syncUsersMumbleGroups', () => {
 		await syncUsersMumbleGroups(env, ['user-1'])
 
 		expect(groupsStub.getUserMemberships).not.toHaveBeenCalled()
-		expect(mumbleStub.deleteAccounts).toHaveBeenCalledWith('srv', ['user-1'])
+		expect(mumbleStub.deleteAccounts).toHaveBeenCalledWith('srv', ['user-1'], 'offboarding')
 		expect(mumbleStub.syncUserGroups).not.toHaveBeenCalled()
 		await expect(provisionMumbleAccount(env, 'user-1')).rejects.toThrow(
 			'MUMBLE_ERROR:unauthorized:'
@@ -258,7 +383,7 @@ describe('syncUsersMumbleGroups', () => {
 
 		expect(hrStub.isUserBlacklisted).toHaveBeenCalledWith('user-1')
 		expect(groupsStub.getUserMemberships).not.toHaveBeenCalled()
-		expect(mumbleStub.deleteAccounts).toHaveBeenCalledWith('srv', ['user-1'])
+		expect(mumbleStub.deleteAccounts).toHaveBeenCalledWith('srv', ['user-1'], 'offboarding')
 		expect(mumbleStub.syncUserGroups).not.toHaveBeenCalled()
 	})
 
@@ -404,7 +529,7 @@ describe('enforceBlacklistedMumbleAccess', () => {
 
 		await enforceBlacklistedMumbleAccess(env, 'user-1', 'test-blacklist')
 
-		expect(mumbleStub.deleteAccounts).toHaveBeenCalledWith('srv', ['user-1'])
+		expect(mumbleStub.deleteAccounts).toHaveBeenCalledWith('srv', ['user-1'], 'blacklist')
 	})
 })
 

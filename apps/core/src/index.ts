@@ -92,6 +92,7 @@ import {
 } from './services/discord-market-post.service'
 import { reconcileMarketPosts } from './services/discord-market-reconcile.service'
 import { DkpService } from './services/dkp.service'
+import { decideMumbleDeleteRetry } from './services/mumble.service'
 import { TemporaryRoleAssignmentsDO } from './temporary-role-assignments-do'
 
 import type {
@@ -107,6 +108,7 @@ import type { Core } from '@repo/core'
 import type { Discord, DiscordInteractionResponse } from '@repo/discord'
 import type { Hr } from '@repo/hr'
 import type { Legacy } from '@repo/legacy'
+import type { MumbleDeleteIntent, MumbleDeleteRetryDecision } from '@repo/mumble'
 import type {
 	MarketDetail as PredictionMarketDetail,
 	PredictionMarkets,
@@ -342,6 +344,14 @@ export class CoreWorker extends WorkerEntrypoint<Env> {
 
 	constructor(ctx: ExecutionContext, env: Env) {
 		super(ctx, env)
+	}
+
+	async decideMumbleDeleteRetry(
+		serverId: string,
+		subjectId: string,
+		intent: MumbleDeleteIntent
+	): Promise<MumbleDeleteRetryDecision> {
+		return decideMumbleDeleteRetry(this.env, serverId, subjectId, intent)
 	}
 
 	/**

@@ -181,16 +181,13 @@ async function finalizeTempop(
 	const db = createDb(env.DATABASE_URL)
 
 	const guests = await db.query.mumbleTempopGuests.findMany({
-		where: and(
-			eq(mumbleTempopGuests.tempopId, tempopId),
-			eq(mumbleTempopGuests.status, 'active')
-		),
+		where: and(eq(mumbleTempopGuests.tempopId, tempopId), eq(mumbleTempopGuests.status, 'active')),
 		columns: { subjectId: true },
 	})
 	const subjectIds = guests.map((guest) => guest.subjectId)
 
 	if (subjectIds.length > 0) {
-		await deleteMumbleAccounts(env, subjectIds)
+		await deleteMumbleAccounts(env, subjectIds, 'tempop_terminal')
 		await db
 			.update(mumbleTempopGuests)
 			.set({ status: 'deleted' })

@@ -1214,7 +1214,7 @@ app.delete('/users/:userId/mumble', requireAuth(), requireAdmin(), async (c) => 
 	const userId = c.req.param('userId')
 
 	try {
-		const result = await deleteMumbleAccounts(c.env, [userId])
+		const result = await deleteMumbleAccounts(c.env, [userId], 'admin_manual')
 		if (!result) {
 			return c.json({ error: 'Failed to delete Mumble account' }, 502)
 		}

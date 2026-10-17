@@ -91,11 +91,7 @@ describe('admin mumble routes', () => {
 			lastAuthenticatedAt: '2025-06-01T12:00:00.000Z',
 		})
 
-		const res = await createApp(makeUser()).request(
-			'/api/admin/users/user-1/mumble',
-			{},
-			env
-		)
+		const res = await createApp(makeUser()).request('/api/admin/users/user-1/mumble', {}, env)
 
 		expect(res.status).toBe(200)
 		const body = (await res.json()) as any
@@ -106,11 +102,7 @@ describe('admin mumble routes', () => {
 	it('falls back to an empty status when the mumble worker transport is unavailable', async () => {
 		getMumbleAccountMock.mockRejectedValue(new Error('Network connection lost.'))
 
-		const res = await createApp(makeUser()).request(
-			'/api/admin/users/user-1/mumble',
-			{},
-			env
-		)
+		const res = await createApp(makeUser()).request('/api/admin/users/user-1/mumble', {}, env)
 
 		expect(res.status).toBe(200)
 		const body = (await res.json()) as any
@@ -151,7 +143,11 @@ describe('admin mumble routes', () => {
 		)
 
 		expect(res.status).toBe(200)
-		expect(deleteMumbleAccountsMock).toHaveBeenCalledWith(expect.any(Object), ['user-1'])
+		expect(deleteMumbleAccountsMock).toHaveBeenCalledWith(
+			expect.any(Object),
+			['user-1'],
+			'admin_manual'
+		)
 		const body = (await res.json()) as any
 		expect(body.deleted).toEqual(['user-1'])
 	})

@@ -35,22 +35,25 @@ interface FakeClient {
 	enable: ReturnType<typeof vi.fn>
 	disable: ReturnType<typeof vi.fn>
 	delete: ReturnType<typeof vi.fn>
+	deleteProjectedUser: ReturnType<typeof vi.fn>
 }
 
 function makeFakeClient(): FakeClient {
 	return {
 		getLocalAccount: vi.fn(),
-		getUserState: vi.fn(),
+		getUserState: vi.fn().mockResolvedValue({ serverId: 'srv', users: [] }),
 		batchSync: vi.fn(),
 		assignGroups: vi.fn(),
 		enable: vi.fn(),
 		disable: vi.fn(),
 		delete: vi.fn(),
+		deleteProjectedUser: vi.fn().mockResolvedValue(undefined),
 	}
 }
 
 function makeFakeStorage() {
 	const data = new Map<string, unknown>()
+	let alarmAt: number | null = null
 	return {
 		data,
 		get: vi.fn(async (key: string) => data.get(key)),
@@ -71,16 +74,23 @@ function makeFakeStorage() {
 			}
 			return result
 		}),
-		getAlarm: vi.fn(async () => null),
-		setAlarm: vi.fn(async () => undefined),
-		deleteAlarm: vi.fn(async () => undefined),
+		getAlarm: vi.fn(async () => alarmAt),
+		setAlarm: vi.fn(async (at: number) => {
+			alarmAt = at
+		}),
+		deleteAlarm: vi.fn(async () => {
+			alarmAt = null
+		}),
 	}
 }
 
 function makeFakeThis(client: FakeClient, overrides: Record<string, unknown> = {}) {
 	const proto = MumbleDO.prototype as unknown as Record<string, unknown>
 	return {
-		env: {},
+		env: {
+			MUMBLE_CONTROL_SAFE_PROJECTION_DELETE: 'true',
+			CORE: { decideMumbleDeleteRetry: vi.fn().mockResolvedValue('retry') },
+		},
 		bucketTokens: 10,
 		bucketLastRefill: Date.now(),
 		writeLock: Promise.resolve(),
@@ -96,6 +106,7 @@ function makeFakeThis(client: FakeClient, overrides: Record<string, unknown> = {
 		findProvisionedSubjects: proto.findProvisionedSubjects,
 		getProjectedUsers: proto.getProjectedUsers,
 		deleteAccountsInner: proto.deleteAccountsInner,
+		clearPendingDelete: proto.clearPendingDelete,
 		queuePendingDeletes: proto.queuePendingDeletes,
 		alarm: proto.alarm,
 		...overrides,
@@ -151,6 +162,18 @@ describe('MumbleDO.provisionAccount', () => {
 		expect(synced.groups).toEqual(['alpha'])
 		expect(synced.passwordVerifier.algorithm).toBe('pbkdf2-sha256')
 		expect(atob(synced.passwordVerifier.hash).length).toBe(32)
+	})
+
+	it('supersedes a queued deletion when a new account is provisioned', async () => {
+		const client = makeFakeClient()
+		client.getLocalAccount.mockResolvedValue(null)
+		client.batchSync.mockResolvedValue({ serverId: 'srv', updated: [SNAPSHOT] })
+		const fakeThis = makeFakeThis(client)
+		fakeThis.state.storage.data.set('pending-delete:srv:user-1', Date.now())
+
+		await MumbleDO.prototype.provisionAccount.call(fakeThis as any, 'srv', input)
+
+		expect(fakeThis.state.storage.data.has('pending-delete:srv:user-1')).toBe(false)
 	})
 
 	it('resolves login name collisions with numeric suffixes', async () => {
@@ -418,26 +441,208 @@ describe('MumbleDO.syncAccountProfiles', () => {
 })
 
 describe('MumbleDO.deleteAccounts', () => {
-	it('pre-filters missing accounts and reports them as notFound', async () => {
+	it('verifies deletion and reports subjects with neither local nor projected state as notFound', async () => {
 		const client = makeFakeClient()
+		let hasLocalAccount = true
 		client.getLocalAccount.mockImplementation(async (_serverId: string, subjectId: string) =>
-			subjectId === 'user-1' ? SNAPSHOT : null
+			subjectId === 'user-1' && hasLocalAccount ? SNAPSHOT : null
 		)
-		client.delete.mockResolvedValue({
-			serverId: 'srv',
-			deletedSubjectIds: ['user-1'],
-			disconnectedSessions: 1,
+		client.delete.mockImplementation(async () => {
+			hasLocalAccount = false
+			return { serverId: 'srv', deletedSubjectIds: ['user-1'], disconnectedSessions: 1 }
 		})
 
 		const result = await MumbleDO.prototype.deleteAccounts.call(
 			makeFakeThis(client) as any,
 			'srv',
-			['user-1', 'user-2']
+			['user-1', 'user-2'],
+			'admin_manual'
 		)
 
 		expect(result).toEqual({ deleted: ['user-1'], notFound: ['user-2'], queued: [] })
 		expect(client.delete).toHaveBeenCalledTimes(1)
 		expect(client.delete.mock.calls[0]![1]).toEqual(['user-1'])
+	})
+
+	it('clears an older queued deletion after a fresh verified deletion', async () => {
+		const client = makeFakeClient()
+		let hasLocalAccount = true
+		client.getLocalAccount.mockImplementation(async () => (hasLocalAccount ? SNAPSHOT : null))
+		client.delete.mockImplementation(async () => {
+			hasLocalAccount = false
+			return { serverId: 'srv', deletedSubjectIds: ['user-1'], disconnectedSessions: 0 }
+		})
+		const fakeThis = makeFakeThis(client)
+		fakeThis.state.storage.data.set('pending-delete:srv:user-1', Date.now())
+
+		await MumbleDO.prototype.deleteAccounts.call(fakeThis as any, 'srv', ['user-1'], 'admin_manual')
+
+		expect(fakeThis.state.storage.data.has('pending-delete:srv:user-1')).toBe(false)
+	})
+
+	it('removes a projection-only orphan after the local account is already gone', async () => {
+		const client = makeFakeClient()
+		client.getLocalAccount.mockResolvedValue(null)
+		let projected = true
+		client.getUserState.mockImplementation(async () => ({
+			serverId: 'srv',
+			users: projected ? [{ ...SNAPSHOT, murmurUserId: 861 }] : [],
+		}))
+		client.deleteProjectedUser.mockImplementation(async () => {
+			projected = false
+		})
+
+		const result = await MumbleDO.prototype.deleteAccounts.call(
+			makeFakeThis(client) as any,
+			'srv',
+			['user-1'],
+			'admin_manual'
+		)
+
+		expect(result).toEqual({ deleted: ['user-1'], notFound: [], queued: [] })
+		expect(client.delete).not.toHaveBeenCalled()
+		expect(client.deleteProjectedUser).toHaveBeenCalledWith('srv', 'user-1')
+	})
+
+	it('queues a projection-only orphan while safe control deletion is disabled', async () => {
+		const client = makeFakeClient()
+		client.getLocalAccount.mockResolvedValue(null)
+		client.getUserState.mockResolvedValue({
+			serverId: 'srv',
+			users: [{ ...SNAPSHOT, murmurUserId: 861 }],
+		})
+		const fakeThis = makeFakeThis(client, { env: {} })
+
+		const result = await MumbleDO.prototype.deleteAccounts.call(
+			fakeThis as any,
+			'srv',
+			['user-1'],
+			'admin_manual'
+		)
+
+		expect(result).toEqual({ deleted: [], notFound: [], queued: ['user-1'] })
+		expect(client.deleteProjectedUser).not.toHaveBeenCalled()
+		expect(fakeThis.state.storage.data.has('pending-delete:srv:user-1')).toBe(true)
+	})
+
+	it('repairs a projection left behind by a successful local delete', async () => {
+		const client = makeFakeClient()
+		let hasLocalAccount = true
+		let projected = true
+		client.getLocalAccount.mockImplementation(async () => (hasLocalAccount ? SNAPSHOT : null))
+		client.getUserState.mockImplementation(async () => ({
+			serverId: 'srv',
+			users: projected ? [{ ...SNAPSHOT, murmurUserId: 861 }] : [],
+		}))
+		client.delete.mockImplementation(async () => {
+			hasLocalAccount = false
+			return { serverId: 'srv', deletedSubjectIds: ['user-1'], disconnectedSessions: 0 }
+		})
+		client.deleteProjectedUser.mockImplementation(async () => {
+			projected = false
+		})
+
+		const result = await MumbleDO.prototype.deleteAccounts.call(
+			makeFakeThis(client) as any,
+			'srv',
+			['user-1'],
+			'admin_manual'
+		)
+
+		expect(result).toEqual({ deleted: ['user-1'], notFound: [], queued: [] })
+		expect(client.deleteProjectedUser).toHaveBeenCalledWith('srv', 'user-1')
+	})
+
+	it('queues an orphan when projection repair does not persist', async () => {
+		const client = makeFakeClient()
+		client.getLocalAccount.mockResolvedValue(null)
+		client.getUserState.mockResolvedValue({
+			serverId: 'srv',
+			users: [{ ...SNAPSHOT, murmurUserId: 861 }],
+		})
+		const fakeThis = makeFakeThis(client)
+
+		const result = await MumbleDO.prototype.deleteAccounts.call(
+			fakeThis as any,
+			'srv',
+			['user-1'],
+			'admin_manual'
+		)
+
+		expect(result).toEqual({ deleted: [], notFound: [], queued: ['user-1'] })
+		expect(fakeThis.state.storage.data.has('pending-delete:srv:user-1')).toBe(true)
+	})
+
+	it('queues an unconfirmed control deletion without treating it as notFound', async () => {
+		const client = makeFakeClient()
+		client.getLocalAccount.mockResolvedValue(SNAPSHOT)
+		client.delete.mockResolvedValue({
+			serverId: 'srv',
+			deletedSubjectIds: [],
+			disconnectedSessions: 0,
+		})
+		const fakeThis = makeFakeThis(client)
+
+		const result = await MumbleDO.prototype.deleteAccounts.call(
+			fakeThis as any,
+			'srv',
+			['user-1'],
+			'admin_manual'
+		)
+
+		expect(result).toEqual({ deleted: [], notFound: [], queued: ['user-1'] })
+		expect(fakeThis.state.storage.data.has('pending-delete:srv:user-1')).toBe(true)
+	})
+
+	it('queues only the unresolved suffix after a verified deletion', async () => {
+		const client = makeFakeClient()
+		const local = new Set(['user-1', 'user-2'])
+		client.getLocalAccount.mockImplementation(async (_serverId: string, subjectId: string) =>
+			local.has(subjectId) ? { ...SNAPSHOT, subjectId } : null
+		)
+		client.delete.mockImplementation(async (_serverId: string, subjectIds: string[]) => {
+			if (subjectIds[0] === 'user-2') throw new Error('control unavailable')
+			local.delete('user-1')
+			return { serverId: 'srv', deletedSubjectIds: ['user-1'], disconnectedSessions: 0 }
+		})
+		const fakeThis = makeFakeThis(client)
+
+		const result = await MumbleDO.prototype.deleteAccounts.call(
+			fakeThis as any,
+			'srv',
+			['user-1', 'user-2'],
+			'admin_manual'
+		)
+
+		expect(result).toEqual({ deleted: ['user-1'], notFound: [], queued: ['user-2'] })
+		expect(fakeThis.state.storage.data.has('pending-delete:srv:user-1')).toBe(false)
+		expect(fakeThis.state.storage.data.has('pending-delete:srv:user-2')).toBe(true)
+	})
+
+	it('persists a failed subject before continuing to a later successful deletion', async () => {
+		const client = makeFakeClient()
+		const fakeThis = makeFakeThis(client)
+		let secondLocalExists = true
+		client.getLocalAccount.mockImplementation(async (_serverId: string, subjectId: string) => {
+			if (subjectId === 'user-1') throw new Error('first lookup failed')
+			expect(fakeThis.state.storage.data.has('pending-delete:srv:user-1')).toBe(true)
+			return secondLocalExists ? { ...SNAPSHOT, subjectId } : null
+		})
+		client.delete.mockImplementation(async () => {
+			secondLocalExists = false
+			return { serverId: 'srv', deletedSubjectIds: ['user-2'], disconnectedSessions: 0 }
+		})
+
+		const result = await MumbleDO.prototype.deleteAccounts.call(
+			fakeThis as any,
+			'srv',
+			['user-1', 'user-2'],
+			'admin_manual'
+		)
+
+		expect(result).toEqual({ deleted: ['user-2'], notFound: [], queued: ['user-1'] })
+		expect(fakeThis.state.storage.data.has('pending-delete:srv:user-1')).toBe(true)
+		expect(fakeThis.state.storage.data.has('pending-delete:srv:user-2')).toBe(false)
 	})
 
 	it('queues unresolved subjects for alarm retry when murmur-control fails', async () => {
@@ -446,7 +651,12 @@ describe('MumbleDO.deleteAccounts', () => {
 		client.delete.mockRejectedValue(new Error('connection refused'))
 
 		const fakeThis = makeFakeThis(client)
-		const result = await MumbleDO.prototype.deleteAccounts.call(fakeThis as any, 'srv', ['user-1'])
+		const result = await MumbleDO.prototype.deleteAccounts.call(
+			fakeThis as any,
+			'srv',
+			['user-1'],
+			'admin_manual'
+		)
 
 		expect(result).toEqual({ deleted: [], notFound: [], queued: ['user-1'] })
 		// Pending deletion persisted and alarm armed
@@ -455,15 +665,28 @@ describe('MumbleDO.deleteAccounts', () => {
 		expect(fakeThis.state.storage.setAlarm).toHaveBeenCalledTimes(1)
 	})
 
+	it('moves a later user-sync alarm forward for a newly queued deletion', async () => {
+		const client = makeFakeClient()
+		client.getLocalAccount.mockRejectedValue(new Error('control unavailable'))
+		const fakeThis = makeFakeThis(client)
+		await fakeThis.state.storage.setAlarm(Date.now() + 60 * 60 * 1000)
+
+		await MumbleDO.prototype.deleteAccounts.call(fakeThis as any, 'srv', ['user-1'], 'offboarding')
+
+		expect(await fakeThis.state.storage.getAlarm()).toBeLessThan(Date.now() + 6 * 60 * 1000)
+	})
+
 	it('queues all subjects when even the existence pre-check fails', async () => {
 		const client = makeFakeClient()
 		client.getLocalAccount.mockRejectedValue(new Error('connection refused'))
 
 		const fakeThis = makeFakeThis(client)
-		const result = await MumbleDO.prototype.deleteAccounts.call(fakeThis as any, 'srv', [
-			'user-1',
-			'user-2',
-		])
+		const result = await MumbleDO.prototype.deleteAccounts.call(
+			fakeThis as any,
+			'srv',
+			['user-1', 'user-2'],
+			'admin_manual'
+		)
 
 		expect(result.queued).toEqual(['user-1', 'user-2'])
 		expect(fakeThis.state.storage.data.has('pending-delete:srv:user-1')).toBe(true)
@@ -472,6 +695,136 @@ describe('MumbleDO.deleteAccounts', () => {
 })
 
 describe('MumbleDO.alarm', () => {
+	it('cancels a queued offboarding deletion when Core says the user is eligible', async () => {
+		const client = makeFakeClient()
+		client.getLocalAccount.mockResolvedValue(SNAPSHOT)
+		const fakeThis = makeFakeThis(client)
+		fakeThis.env.CORE.decideMumbleDeleteRetry.mockResolvedValue('cancel')
+		fakeThis.state.storage.data.set('pending-delete:srv:user-1', {
+			intent: 'offboarding',
+			requestedAt: Date.now(),
+		})
+
+		await (MumbleDO.prototype.alarm as () => Promise<void>).call(fakeThis as any)
+
+		expect(fakeThis.env.CORE.decideMumbleDeleteRetry).toHaveBeenCalledWith(
+			'srv',
+			'user-1',
+			'offboarding'
+		)
+		expect(client.delete).not.toHaveBeenCalled()
+		expect(fakeThis.state.storage.data.has('pending-delete:srv:user-1')).toBe(false)
+	})
+
+	it('cancels a legacy deletion when Core says the user is eligible', async () => {
+		const client = makeFakeClient()
+		client.getLocalAccount.mockResolvedValue(SNAPSHOT)
+		const fakeThis = makeFakeThis(client)
+		fakeThis.env.CORE.decideMumbleDeleteRetry.mockResolvedValue('cancel')
+		fakeThis.state.storage.data.set('pending-delete:srv:user-1', Date.now())
+
+		await (MumbleDO.prototype.alarm as () => Promise<void>).call(fakeThis as any)
+
+		expect(client.delete).not.toHaveBeenCalled()
+		expect(fakeThis.env.CORE.decideMumbleDeleteRetry).toHaveBeenCalledWith(
+			'srv',
+			'user-1',
+			'offboarding'
+		)
+		expect(fakeThis.state.storage.data.has('pending-delete:srv:user-1')).toBe(false)
+	})
+
+	it('retries a legacy deletion only after current Core eligibility rejects the user', async () => {
+		const client = makeFakeClient()
+		let hasLocalAccount = true
+		client.getLocalAccount.mockImplementation(async () => (hasLocalAccount ? SNAPSHOT : null))
+		client.delete.mockImplementation(async () => {
+			hasLocalAccount = false
+			return { serverId: 'srv', deletedSubjectIds: ['user-1'], disconnectedSessions: 0 }
+		})
+		const fakeThis = makeFakeThis(client)
+		fakeThis.state.storage.data.set('pending-delete:srv:user-1', Date.now())
+
+		await (MumbleDO.prototype.alarm as () => Promise<void>).call(fakeThis as any)
+
+		expect(fakeThis.env.CORE.decideMumbleDeleteRetry).toHaveBeenCalledWith(
+			'srv',
+			'user-1',
+			'offboarding'
+		)
+		expect(client.delete).toHaveBeenCalledWith('srv', ['user-1'])
+		expect(fakeThis.state.storage.data.has('pending-delete:srv:user-1')).toBe(false)
+	})
+
+	it('checks a legacy temp-op guest against terminal state before retrying', async () => {
+		const client = makeFakeClient()
+		const fakeThis = makeFakeThis(client)
+		fakeThis.env.CORE.decideMumbleDeleteRetry.mockResolvedValue('defer')
+		const subjectId = 'tempop:operation-1:9001'
+		fakeThis.state.storage.data.set(`pending-delete:srv:${subjectId}`, Date.now())
+
+		await (MumbleDO.prototype.alarm as () => Promise<void>).call(fakeThis as any)
+
+		expect(fakeThis.env.CORE.decideMumbleDeleteRetry).toHaveBeenCalledWith(
+			'srv',
+			subjectId,
+			'tempop_terminal'
+		)
+		expect(client.delete).not.toHaveBeenCalled()
+		expect(fakeThis.state.storage.data.has(`pending-delete:srv:${subjectId}`)).toBe(true)
+	})
+
+	it('defers without touching control when Core is unavailable', async () => {
+		const client = makeFakeClient()
+		client.getLocalAccount.mockResolvedValue(SNAPSHOT)
+		const fakeThis = makeFakeThis(client)
+		fakeThis.env.CORE.decideMumbleDeleteRetry.mockRejectedValue(new Error('Core unavailable'))
+		fakeThis.state.storage.data.set('pending-delete:srv:user-1', {
+			intent: 'offboarding',
+			requestedAt: Date.now(),
+		})
+
+		await (MumbleDO.prototype.alarm as () => Promise<void>).call(fakeThis as any)
+
+		expect(client.delete).not.toHaveBeenCalled()
+		expect(fakeThis.state.storage.data.has('pending-delete:srv:user-1')).toBe(true)
+		expect(await fakeThis.state.storage.getAlarm()).not.toBeNull()
+	})
+
+	it('keeps an alarm armed when a deletion is queued during alarm cleanup', async () => {
+		const client = makeFakeClient()
+		client.getLocalAccount.mockRejectedValue(new Error('control unavailable'))
+		const fakeThis = makeFakeThis(client)
+		const originalList = fakeThis.state.storage.list.getMockImplementation()!
+		let releaseList!: () => void
+		const listPaused = new Promise<void>((resolve) => {
+			releaseList = resolve
+		})
+		let enteredList!: () => void
+		const listEntered = new Promise<void>((resolve) => {
+			enteredList = resolve
+		})
+		fakeThis.state.storage.list.mockImplementationOnce(async (options: { prefix: string }) => {
+			enteredList()
+			await listPaused
+			return originalList(options)
+		})
+
+		const alarm = (MumbleDO.prototype.alarm as () => Promise<void>).call(fakeThis as any)
+		await listEntered
+		const deletion = MumbleDO.prototype.deleteAccounts.call(
+			fakeThis as any,
+			'srv',
+			['user-1'],
+			'admin_manual'
+		)
+		releaseList()
+		await Promise.all([alarm, deletion])
+
+		expect(fakeThis.state.storage.data.has('pending-delete:srv:user-1')).toBe(true)
+		expect(await fakeThis.state.storage.getAlarm()).not.toBeNull()
+	})
+
 	it('cleans up completed and abandoned user sync state', async () => {
 		const client = makeFakeClient()
 		const fakeThis = makeFakeThis(client)
@@ -500,15 +853,18 @@ describe('MumbleDO.alarm', () => {
 
 	it('retries queued deletions and clears confirmed entries', async () => {
 		const client = makeFakeClient()
-		client.getLocalAccount.mockResolvedValue(SNAPSHOT)
-		client.delete.mockResolvedValue({
-			serverId: 'srv',
-			deletedSubjectIds: ['user-1'],
-			disconnectedSessions: 0,
+		let hasLocalAccount = true
+		client.getLocalAccount.mockImplementation(async () => (hasLocalAccount ? SNAPSHOT : null))
+		client.delete.mockImplementation(async () => {
+			hasLocalAccount = false
+			return { serverId: 'srv', deletedSubjectIds: ['user-1'], disconnectedSessions: 0 }
 		})
 
 		const fakeThis = makeFakeThis(client)
-		fakeThis.state.storage.data.set('pending-delete:srv:user-1', Date.now())
+		fakeThis.state.storage.data.set('pending-delete:srv:user-1', {
+			intent: 'offboarding',
+			requestedAt: Date.now(),
+		})
 
 		await (MumbleDO.prototype.alarm as () => Promise<void>).call(fakeThis as any)
 
@@ -518,12 +874,60 @@ describe('MumbleDO.alarm', () => {
 		expect(fakeThis.state.storage.setAlarm).not.toHaveBeenCalled()
 	})
 
+	it('preserves colons in a queued temp-op guest subject ID', async () => {
+		const client = makeFakeClient()
+		const subjectId = 'tempop:operation-1:9001'
+		let hasLocalAccount = true
+		client.getLocalAccount.mockImplementation(async (serverId: string, requestedId: string) =>
+			serverId === 'srv' && requestedId === subjectId && hasLocalAccount
+				? { ...SNAPSHOT, subjectId }
+				: null
+		)
+		client.delete.mockImplementation(async () => {
+			hasLocalAccount = false
+			return { serverId: 'srv', deletedSubjectIds: [subjectId], disconnectedSessions: 0 }
+		})
+		const fakeThis = makeFakeThis(client)
+		fakeThis.state.storage.data.set(`pending-delete:srv:${subjectId}`, {
+			intent: 'tempop_terminal',
+			requestedAt: Date.now(),
+		})
+
+		await (MumbleDO.prototype.alarm as () => Promise<void>).call(fakeThis as any)
+
+		expect(client.delete).toHaveBeenCalledWith('srv', [subjectId])
+		expect(fakeThis.state.storage.data.has(`pending-delete:srv:${subjectId}`)).toBe(false)
+	})
+
+	it('does not repair a projection-only orphan while the safety gate is disabled', async () => {
+		const client = makeFakeClient()
+		client.getLocalAccount.mockResolvedValue(null)
+		client.getUserState.mockResolvedValue({
+			serverId: 'srv',
+			users: [{ ...SNAPSHOT, murmurUserId: 861 }],
+		})
+		const fakeThis = makeFakeThis(client)
+		fakeThis.env.MUMBLE_CONTROL_SAFE_PROJECTION_DELETE = 'false'
+		fakeThis.state.storage.data.set('pending-delete:srv:user-1', {
+			intent: 'offboarding',
+			requestedAt: Date.now(),
+		})
+
+		await (MumbleDO.prototype.alarm as () => Promise<void>).call(fakeThis as any)
+
+		expect(client.deleteProjectedUser).not.toHaveBeenCalled()
+		expect(fakeThis.state.storage.data.has('pending-delete:srv:user-1')).toBe(true)
+	})
+
 	it('reschedules the alarm while deletions keep failing', async () => {
 		const client = makeFakeClient()
 		client.getLocalAccount.mockRejectedValue(new Error('still down'))
 
 		const fakeThis = makeFakeThis(client)
-		fakeThis.state.storage.data.set('pending-delete:srv:user-1', Date.now())
+		fakeThis.state.storage.data.set('pending-delete:srv:user-1', {
+			intent: 'offboarding',
+			requestedAt: Date.now(),
+		})
 
 		await (MumbleDO.prototype.alarm as () => Promise<void>).call(fakeThis as any)
 

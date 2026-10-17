@@ -124,6 +124,20 @@ test('reports enabled ineligible accounts after reading every audit page', async
 	}
 })
 
+test('accepts an older completed audit while rejecting invalid or future completion times', async () => {
+	const oldRun = fixture({ run: { completedAt: '2026-10-16T12:00:00.000Z' } })
+	const report = await runAudit(CONFIG, { fetchImpl: oldRun.fetchImpl, now: () => NOW })
+	assert.equal(report.auditCompletedAt, '2026-10-16T12:00:00.000Z')
+
+	for (const completedAt of ['invalid', '2026-10-17T12:36:00.000Z']) {
+		const { fetchImpl } = fixture({ run: { completedAt } })
+		await assert.rejects(
+			runAudit(CONFIG, { fetchImpl, now: () => NOW }),
+			/invalid or future completion time/
+		)
+	}
+})
+
 test('refuses an incomplete audit page before reading mumble-control', async () => {
 	const { calls, fetchImpl } = fixture({
 		page: (result) => ({ ...result, pagination: { ...result.pagination, totalCount: 3 } }),

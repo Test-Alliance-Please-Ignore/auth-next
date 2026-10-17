@@ -32,7 +32,6 @@ import { fileURLToPath, pathToFileURL, URL } from 'node:url'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const PAGE_SIZE = 100
-const MAX_AUDIT_AGE_MS = 60 * 60 * 1000
 const REQUEST_TIMEOUT_MS = 30_000
 const MAX_AUDIT_RESPONSE_BYTES = 2 * 1024 * 1024
 const MAX_CONTROL_RESPONSE_BYTES = 32 * 1024 * 1024
@@ -221,12 +220,8 @@ function validateRun(run, runId, now) {
 		throw new Error('Audit run status is inconsistent with its ineligible count')
 	}
 	const completedAtMs = Date.parse(run.completedAt)
-	if (
-		!Number.isFinite(completedAtMs) ||
-		completedAtMs > now + 5 * 60 * 1000 ||
-		now - completedAtMs > MAX_AUDIT_AGE_MS
-	) {
-		throw new Error('Audit run must have completed within the last hour')
+	if (!Number.isFinite(completedAtMs) || completedAtMs > now + 5 * 60 * 1000) {
+		throw new Error('Audit run has an invalid or future completion time')
 	}
 	return {
 		id: run.id,

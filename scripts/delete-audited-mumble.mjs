@@ -3,10 +3,11 @@
 /**
  * One-time, allowlisted cleanup of the 57 local Mumble accounts identified by
  * audit-ineligible-mumble.mjs. The old report supplies candidates only. A new
- * Services Audit, the live member-corporation list, current user details and
- * current local accounts must all agree before any deletion is attempted.
+ * Services Audit, the reviewed 37-to-36 member-corporation change, current
+ * user details and current local accounts must all agree before deletion.
  *
- * Plan first; inspect the private JSON file; then provide its printed SHA-256
+ * Preview checks only the first two original candidates and cannot be applied.
+ * Plan all 57; inspect the private JSON file; then provide its printed SHA-256
  * as MUMBLE_DELETE_APPROVAL_SHA256 in apply mode. Apply also requires an
  * explicit acknowledgement that the mumble-control kick/unregister fix is
  * deployed. Never store credentials or reports in this repository.
@@ -26,6 +27,9 @@ const MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 const MAX_PLAN_AGE_MS = 60 * 60 * 1000
 const EXPECTED_SOURCE_CANDIDATES = 57
 const ORIGINAL_REPORT_SHA256 = '94b64723666ba21e4f92dfd487314b3d0056eaee83edc5c37c4d962c556318d4'
+// The operator confirmed this corporation was intentionally de-flagged after
+// the original report. This one-time exception is an exact set transition.
+const REVIEWED_REMOVED_CORPORATION_ID = '98648795'
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
 function assert(condition, message) {
@@ -44,7 +48,7 @@ function sameIds(left, right) {
 	return JSON.stringify(sortedIds(left)) === JSON.stringify(sortedIds(right))
 }
 
-async function readPrivateJson(path, label) {
+export async function readPrivateJson(path, label) {
 	assert(typeof path === 'string' && path.startsWith('/'), `${label} needs an absolute file path`)
 	const fileStat = await stat(path)
 	assert(fileStat.isFile() && (fileStat.mode & 0o077) === 0, `${label} must be mode 0600`)
@@ -56,7 +60,7 @@ async function readPrivateJson(path, label) {
 	}
 }
 
-async function assertPrivateOutputPath(path, label) {
+export async function assertPrivateOutputPath(path, label) {
 	assert(typeof path === 'string' && path.startsWith('/'), `${label} needs an absolute file path`)
 	const parent = await realpath(dirname(path))
 	const repoRoot = await realpath(REPO_ROOT)
@@ -66,7 +70,7 @@ async function assertPrivateOutputPath(path, label) {
 	)
 }
 
-async function apiJson(
+export async function apiJson(
 	fetchImpl,
 	url,
 	headers,
@@ -174,8 +178,15 @@ function requestHeaders(config) {
 	}
 }
 
-async function inspectCandidate(config, candidate, fetchImpl) {
+export async function inspectCandidate(
+	config,
+	candidate,
+	memberCorporationIds,
+	fetchImpl,
+	{ verifiedCharacterCorporations = null } = {}
+) {
 	const headers = requestHeaders(config)
+	const approvedMemberCorpIds = new Set(memberCorporationIds)
 	const user = await apiJson(
 		fetchImpl,
 		`${config.authBaseUrl}/api/admin/users/${encodeURIComponent(candidate.userId)}`,
@@ -196,6 +207,23 @@ async function inspectCandidate(config, candidate, fetchImpl) {
 		`User ${candidate.userId} details are malformed`
 	)
 	if (user.is_admin) return 'currently_eligible'
+	if (verifiedCharacterCorporations !== null) {
+		assert(
+			verifiedCharacterCorporations instanceof Map,
+			'Verified character corporations are malformed'
+		)
+		if (
+			verifiedCharacterCorporations.size !== user.characters.length ||
+			user.characters.some(
+				(character) =>
+					typeof character.characterId !== 'string' ||
+					!verifiedCharacterCorporations.has(character.characterId) ||
+					verifiedCharacterCorporations.get(character.characterId) !== character.corporationId
+			)
+		) {
+			return 'character_affiliation_changed'
+		}
+	}
 	// The paginated corporation list is cached for one hour. The detail route
 	// reads each corporation directly from the database. For a player corp, 404
 	// means no managed-corporation row exists and cannot grant membership.
@@ -204,6 +232,9 @@ async function inspectCandidate(config, candidate, fetchImpl) {
 		user.characters.map((character) => character.corporationId)
 	)) {
 		if (!corporationId) continue
+		// A planned member corp remains protected if its live flag changes after
+		// the audit snapshot. This deletion run cannot approve a second removal.
+		if (approvedMemberCorpIds.has(corporationId)) return 'member_corporation_in_approved_basis'
 		assert(/^\d+$/.test(corporationId), `Corporation ${corporationId} ID is malformed`)
 		const numericId = Number(corporationId)
 		assert(Number.isSafeInteger(numericId), `Corporation ${corporationId} ID is malformed`)
@@ -216,7 +247,7 @@ async function inspectCandidate(config, candidate, fetchImpl) {
 		)
 		if (!corporation) {
 			if (numericId >= 1_000_000 && numericId < 2_000_000) {
-				return 'npc_corporation_unverifiable'
+				if (verifiedCharacterCorporations === null) return 'npc_corporation_unverifiable'
 			}
 			continue
 		}
@@ -273,23 +304,60 @@ async function inspectCandidate(config, candidate, fetchImpl) {
 export async function makePlan(
 	config,
 	source,
-	{ fetchImpl = fetch, now = Date.now, expectedSourceSha256 = ORIGINAL_REPORT_SHA256 } = {}
+	{
+		fetchImpl = fetch,
+		now = Date.now,
+		expectedSourceSha256 = ORIGINAL_REPORT_SHA256,
+		candidateLimit = EXPECTED_SOURCE_CANDIDATES,
+		onProgress = async () => {},
+	} = {}
 ) {
 	validateSource(source, config.serverId, expectedSourceSha256)
 	assert(config.runId !== source.auditRunId, 'Start a NEW Services Audit for the deletion plan')
-	const fresh = await runAudit(config, { fetchImpl, now })
 	assert(
-		fresh.basisComparedToCount !== null &&
+		Number.isInteger(candidateLimit) &&
+			candidateLimit >= 1 &&
+			candidateLimit <= EXPECTED_SOURCE_CANDIDATES,
+		'Candidate limit is invalid'
+	)
+	await onProgress(`Checking Services Audit and Mumble account intersection`)
+	const fresh = await runAudit(config, { fetchImpl, now })
+	const sourceCorpIds = new Set(source.memberCorporationIds)
+	const freshCorpIds = new Set(fresh.memberCorporationIds)
+	const basisDiagnostic = {
+		comparedToCount: fresh.basisComparedToCount,
+		memberCorpCount: fresh.memberCorpCount,
+		basisSuspect: fresh.basisSuspect,
+		basisRemovedCorporationIds: fresh.basisRemovedCorporationIds,
+		missingFromFresh: source.memberCorporationIds.filter((id) => !freshCorpIds.has(id)),
+		addedInFresh: fresh.memberCorporationIds.filter((id) => !sourceCorpIds.has(id)),
+		warningCodes: fresh.auditWarnings.map((warning) => warning.code),
+	}
+	const reviewedRemoval = [REVIEWED_REMOVED_CORPORATION_ID]
+	const expectedFreshCorpIds = source.memberCorporationIds.filter(
+		(id) => id !== REVIEWED_REMOVED_CORPORATION_ID
+	)
+	const warningCodes = fresh.auditWarnings.map((warning) => warning.code)
+	assert(
+		source.memberCorpCount === 37 &&
+			sourceCorpIds.has(REVIEWED_REMOVED_CORPORATION_ID) &&
+			fresh.basisComparedToCount === source.memberCorpCount &&
+			fresh.memberCorpCount === source.memberCorpCount - 1 &&
 			fresh.basisSuspect === false &&
-			fresh.basisRemovedCorporationIds?.length === 0 &&
-			sameIds(fresh.memberCorporationIds, source.memberCorporationIds) &&
-			fresh.auditWarnings.every((warning) => warning.code === 'blast_radius'),
-		'Fresh audit has an unvalidated or changed member-corporation basis'
+			fresh.basisNote === null &&
+			Array.isArray(fresh.basisRemovedCorporationIds) &&
+			sameIds(fresh.basisRemovedCorporationIds, reviewedRemoval) &&
+			sameIds(fresh.memberCorporationIds, expectedFreshCorpIds) &&
+			warningCodes.filter((code) => code === 'member_corps_changed').length === 1 &&
+			warningCodes.every((code) => code === 'member_corps_changed' || code === 'blast_radius'),
+		`Fresh audit has an unvalidated or changed member-corporation basis: ${JSON.stringify(basisDiagnostic)}`
 	)
 	const freshMatches = new Map(fresh.matches.map((match) => [match.userId, match]))
 	const candidates = []
 	const skipped = []
-	for (const original of source.matches) {
+	const inspected = source.matches.slice(0, candidateLimit)
+	for (const [index, original] of inspected.entries()) {
+		await onProgress(`Checking candidate ${index + 1}/${candidateLimit}`)
 		const current = freshMatches.get(original.userId)
 		if (!current) {
 			skipped.push({ userId: original.userId, reason: 'not_in_fresh_intersection' })
@@ -303,7 +371,7 @@ export async function makePlan(
 			skipped.push({ userId: original.userId, reason: 'identity_or_reason_changed' })
 			continue
 		}
-		const status = await inspectCandidate(config, original, fetchImpl)
+		const status = await inspectCandidate(config, original, fresh.memberCorporationIds, fetchImpl)
 		if (status === 'ready') {
 			candidates.push({
 				userId: original.userId,
@@ -315,19 +383,24 @@ export async function makePlan(
 			skipped.push({ userId: original.userId, reason: status })
 		}
 	}
-	assert(
-		candidates.length + skipped.length === EXPECTED_SOURCE_CANDIDATES,
-		'Plan coverage is incomplete'
-	)
+	assert(candidates.length + skipped.length === candidateLimit, 'Plan coverage is incomplete')
 	return {
-		version: 1,
+		version: 2,
+		previewOnly: candidateLimit < EXPECTED_SOURCE_CANDIDATES,
+		deferredCount: EXPECTED_SOURCE_CANDIDATES - candidateLimit,
 		createdAt: new Date(now()).toISOString(),
 		serverId: config.serverId,
 		sourceAuditRunId: source.auditRunId,
 		sourceSha256: digest(source),
 		freshAuditRunId: fresh.auditRunId,
 		freshAuditCompletedAt: fresh.auditCompletedAt,
-		memberCorporationIds: sortedIds(source.memberCorporationIds),
+		memberCorporationIds: sortedIds(fresh.memberCorporationIds),
+		basisChange: {
+			previousCount: source.memberCorpCount,
+			currentCount: fresh.memberCorpCount,
+			removedCorporationIds: reviewedRemoval,
+			addedCorporationIds: [],
+		},
 		freshAuditWarnings: fresh.auditWarnings,
 		candidates,
 		skipped,
@@ -350,9 +423,18 @@ export async function applyPlan(
 		expectedSourceSha256 = ORIGINAL_REPORT_SHA256,
 	} = {}
 ) {
+	assert(
+		plan &&
+			plan.previewOnly === false &&
+			plan.deferredCount === 0 &&
+			Array.isArray(plan.candidates) &&
+			Array.isArray(plan.skipped) &&
+			plan.candidates.length + plan.skipped.length === EXPECTED_SOURCE_CANDIDATES,
+		'Preview files cannot be applied'
+	)
 	assert(/^[0-9a-f]{64}$/.test(approvalSha256), 'A 64-character plan SHA-256 approval is required')
 	assert(digest(plan) === approvalSha256, 'Plan SHA-256 approval does not match the plan file')
-	assert(plan.version === 1 && plan.serverId === config.serverId, 'Plan version or server is wrong')
+	assert(plan.version === 2 && plan.serverId === config.serverId, 'Plan version or server is wrong')
 	assert(plan.sourceSha256 === digest(source), 'Source report changed after planning')
 	assert(plan.freshAuditRunId === config.runId, 'Plan names another fresh audit run')
 	const created = Date.parse(plan.createdAt)
@@ -363,6 +445,7 @@ export async function applyPlan(
 	const currentPlan = await makePlan(config, source, { fetchImpl, now, expectedSourceSha256 })
 	assert(
 		currentPlan.freshAuditCompletedAt === plan.freshAuditCompletedAt &&
+			JSON.stringify(currentPlan.basisChange) === JSON.stringify(plan.basisChange) &&
 			JSON.stringify(currentPlan.memberCorporationIds) ===
 				JSON.stringify(plan.memberCorporationIds) &&
 			JSON.stringify(currentPlan.candidates) === JSON.stringify(plan.candidates) &&
@@ -375,7 +458,7 @@ export async function applyPlan(
 	for (const candidate of plan.candidates) {
 		// User and corporation details are direct database reads. Check again
 		// immediately before this subject's irreversible request.
-		const status = await inspectCandidate(config, candidate, fetchImpl)
+		const status = await inspectCandidate(config, candidate, plan.memberCorporationIds, fetchImpl)
 		if (status !== 'ready') {
 			const result = { userId: candidate.userId, status: `skipped_${status}` }
 			results.push(result)
@@ -435,7 +518,10 @@ export async function applyPlan(
 
 async function main() {
 	const mode = process.argv[2]
-	assert(mode === 'plan' || mode === 'apply', 'Usage: delete-audited-mumble.mjs plan|apply')
+	assert(
+		mode === 'preview' || mode === 'plan' || mode === 'apply',
+		'Usage: delete-audited-mumble.mjs preview|plan|apply'
+	)
 	const planFile = process.env.MUMBLE_DELETE_PLAN_FILE
 	assert(planFile, 'MUMBLE_DELETE_PLAN_FILE is required')
 	const config = await configFromEnvironment({
@@ -443,14 +529,21 @@ async function main() {
 		MUMBLE_AUDIT_OUTPUT_FILE: planFile,
 	})
 	const source = await readPrivateJson(process.env.MUMBLE_DELETE_SOURCE_REPORT, 'Source report')
-	if (mode === 'plan') {
-		const plan = await makePlan(config, source)
+	if (mode === 'preview' || mode === 'plan') {
+		const plan = await makePlan(config, source, {
+			candidateLimit: mode === 'preview' ? 2 : EXPECTED_SOURCE_CANDIDATES,
+			onProgress: async (message) => process.stderr.write(`${message}\n`),
+		})
 		await writeReportFile(plan, planFile)
 		for (const warning of plan.freshAuditWarnings) {
 			process.stderr.write(`Plan warning [${warning.code}]: ${warning.message}\n`)
 		}
 		process.stdout.write(
-			`Plan written to ${planFile}\nCandidates: ${plan.candidates.length}; skipped: ${plan.skipped.length}\nApproval SHA-256: ${digest(plan)}\n`
+			`${mode === 'preview' ? 'Preview' : 'Plan'} written to ${planFile}\n` +
+				`Candidates: ${plan.candidates.length}; skipped: ${plan.skipped.length}; deferred: ${plan.deferredCount}\n` +
+				(mode === 'preview'
+					? 'Preview cannot be applied.\n'
+					: `Approval SHA-256: ${digest(plan)}\n`)
 		)
 		return
 	}
