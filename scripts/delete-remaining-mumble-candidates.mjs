@@ -28,6 +28,9 @@ const TWO_PLAN_SHA256 = 'a163fbf24f8034a4660c3a362d4c882abba1f4f7f9363a271af7504
 const TWO_RESULT_SHA256 = 'cf730a8dbc1ef7daf8ba13de4c08166fe4fcb86ff1cc190782a03bf1c0c2ee5a'
 const REMAINING_IDS_SHA256 = 'c938f10ad4162473284d6e57f45c96958873ecdd5172f3159a2ca33c7d33a3f9'
 const REVIEWED_REMOVED_CORP_ID = '98648795'
+// The operator confirmed The Phoenix Uprising left the alliance after the
+// first 80-account plan. Accept only this additional, exact basis transition.
+const REVIEWED_SECOND_REMOVED_CORP_ID = '98579640'
 const ESI_AFFILIATION_URL =
 	'https://esi.evetech.net/latest/characters/affiliation/?datasource=tranquility'
 const MAX_PLAN_AGE_MS = 60 * 60 * 1000
@@ -141,15 +144,36 @@ function assertFreshBasis(fresh, source, twoPlan, twoResult) {
 		fresh.basisComparedToCount === 37 &&
 		Array.isArray(fresh.basisRemovedCorporationIds) &&
 		sameIds(fresh.basisRemovedCorporationIds, [REVIEWED_REMOVED_CORP_ID])
+	const secondReviewedBaseline =
+		fresh.basisComparedToCount === 37 &&
+		Array.isArray(fresh.basisRemovedCorporationIds) &&
+		sameIds(fresh.basisRemovedCorporationIds, [
+			REVIEWED_REMOVED_CORP_ID,
+			REVIEWED_SECOND_REMOVED_CORP_ID,
+		])
+	const expectedMemberCorporationIds = secondReviewedBaseline
+		? source.memberCorporationIds.filter((id) => id !== REVIEWED_SECOND_REMOVED_CORP_ID)
+		: source.memberCorporationIds
+	// After 76 verified deletions and the e501 projection-only failure, the
+	// original report's final three are the only unattempted local accounts.
+	// Refuse any reappearing or unrelated enabled account in this final pass.
 	assert(
-		sameIds(fresh.memberCorporationIds, source.memberCorporationIds) &&
-			fresh.memberCorpCount === 36 &&
+		source.memberCorpCount === 36 &&
+			source.memberCorporationIds.includes(REVIEWED_SECOND_REMOVED_CORP_ID) &&
+			sameIds(fresh.memberCorporationIds, expectedMemberCorporationIds) &&
+			fresh.memberCorpCount === expectedMemberCorporationIds.length &&
 			fresh.basisSuspect === false &&
 			fresh.basisNote === null &&
-			(sameBaseline || reviewedBaseline) &&
+			(sameBaseline || reviewedBaseline || secondReviewedBaseline) &&
 			warningCodes.every((code) => code === 'blast_radius' || code === 'member_corps_changed') &&
 			(!sameBaseline || !warningCodes.includes('member_corps_changed')) &&
-			(!reviewedBaseline || warningCodes.includes('member_corps_changed')),
+			(!(reviewedBaseline || secondReviewedBaseline) ||
+				warningCodes.includes('member_corps_changed')) &&
+			(!secondReviewedBaseline ||
+				sameIds(
+					fresh.matches.map((candidate) => candidate.userId),
+					source.matches.slice(-3).map((candidate) => candidate.userId)
+				)),
 		'New Services Audit has a changed or unreviewed member-corporation basis'
 	)
 	const freshIds = new Set(fresh.matches.map((candidate) => candidate.userId))

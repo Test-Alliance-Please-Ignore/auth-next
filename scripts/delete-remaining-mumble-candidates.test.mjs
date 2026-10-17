@@ -36,8 +36,12 @@ function fixture({
 	missingEsiIndex = null,
 	failFirstDelete = false,
 	changedBasis = false,
+	secondReviewedBasis = false,
+	secondReviewedExtraMatch = false,
+	invalidSecondRemoval = false,
 } = {}) {
 	const memberCorporationIds = Array.from({ length: 36 }, (_, index) => String(100_000_000 + index))
+	memberCorporationIds[35] = '98579640'
 	const source = {
 		auditRunId: 'fc5a6bb4-332d-4cd7-8c48-f8f33de6b7ca',
 		auditCompletedAt: '2026-10-17T10:00:00.000Z',
@@ -121,12 +125,18 @@ function fixture({
 				scanned: 100,
 				eligibleCount: 16,
 				ineligibleCount: 84,
-				memberCorpCount: 36,
-				memberCorporationIds: changedBasis
-					? memberCorporationIds.slice(1).concat('99999999')
-					: memberCorporationIds,
-				basisComparedToCount: 36,
-				basisRemovedCorporationIds: [],
+				memberCorpCount: secondReviewedBasis ? 35 : 36,
+				memberCorporationIds: secondReviewedBasis
+					? memberCorporationIds.filter((id) => id !== '98579640')
+					: changedBasis
+						? memberCorporationIds.slice(1).concat('99999999')
+						: memberCorporationIds,
+				basisComparedToCount: secondReviewedBasis ? 37 : 36,
+				basisRemovedCorporationIds: secondReviewedBasis
+					? invalidSecondRemoval
+						? ['98648795', '99999999']
+						: ['98648795', '98579640']
+					: [],
 				basisNote: null,
 				basisSuspect: false,
 				blastRadiusTripped: true,
@@ -142,7 +152,7 @@ function fixture({
 			body = {
 				serverId: 'srv-1',
 				accounts: source.matches
-					.slice(2)
+					.slice(secondReviewedBasis ? (secondReviewedExtraMatch ? -4 : -3) : 2)
 					.filter((candidate) => !deleted.has(candidate.userId))
 					.map((candidate) => ({
 						subjectId: candidate.userId,
@@ -406,6 +416,113 @@ test('rejects corporation-basis drift before any candidate check', async () => {
 		/changed or unreviewed member-corporation basis/
 	)
 	assert.ok(f.calls.every((call) => !call.url.pathname.startsWith('/api/admin/users/')))
+})
+
+test('accepts only the reviewed second corporation removal', async () => {
+	const f = fixture({ secondReviewedBasis: true })
+	const plan = await makeRemainingPlan(CONFIG, f.source, f.preview, f.twoPlan, f.twoResult, {
+		fetchImpl: f.fetchImpl,
+		now: () => NOW,
+		...f.pins,
+	})
+	assert.equal(plan.memberCorporationIds.length, 35)
+	assert.ok(!plan.memberCorporationIds.includes('98579640'))
+	assert.deepEqual(
+		plan.candidates.map((candidate) => candidate.userId),
+		f.source.matches.slice(-3).map((candidate) => candidate.userId)
+	)
+	assert.equal(plan.skipped.length, 79)
+
+	const extra = fixture({ secondReviewedBasis: true, secondReviewedExtraMatch: true })
+	await assert.rejects(
+		makeRemainingPlan(CONFIG, extra.source, extra.preview, extra.twoPlan, extra.twoResult, {
+			fetchImpl: extra.fetchImpl,
+			now: () => NOW,
+			...extra.pins,
+		}),
+		/changed or unreviewed member-corporation basis/
+	)
+	assert.ok(extra.calls.every((call) => !call.url.pathname.startsWith('/api/admin/users/')))
+
+	const inconsistent = fixture({ secondReviewedBasis: true, invalidSecondRemoval: true })
+	await assert.rejects(
+		makeRemainingPlan(
+			CONFIG,
+			inconsistent.source,
+			inconsistent.preview,
+			inconsistent.twoPlan,
+			inconsistent.twoResult,
+			{ fetchImpl: inconsistent.fetchImpl, now: () => NOW, ...inconsistent.pins }
+		),
+		/changed or unreviewed member-corporation basis/
+	)
+	assert.ok(inconsistent.calls.every((call) => !call.url.pathname.startsWith('/api/admin/users/')))
+})
+
+test('the reviewed second removal applies only the final three and rejects the old plan', async () => {
+	const old = fixture()
+	const oldPlan = await makeRemainingPlan(
+		CONFIG,
+		old.source,
+		old.preview,
+		old.twoPlan,
+		old.twoResult,
+		{ fetchImpl: old.fetchImpl, now: () => NOW, ...old.pins }
+	)
+	const f = fixture({ secondReviewedBasis: true })
+	await assert.rejects(
+		applyRemainingPlan(
+			CONFIG,
+			f.source,
+			f.preview,
+			f.twoPlan,
+			f.twoResult,
+			oldPlan,
+			remainingPlanDigest(oldPlan),
+			{
+				fetchImpl: f.fetchImpl,
+				now: () => NOW + 60_000,
+				kickFixDeployed: true,
+				authFixDeployed: true,
+				...f.pins,
+			}
+		),
+		/Plan memberCorporationIds changed during apply preflight/
+	)
+	assert.ok(
+		f.calls.every((call) => call.url.pathname !== '/v1/servers/srv-1/local-accounts:delete')
+	)
+
+	const plan = await makeRemainingPlan(CONFIG, f.source, f.preview, f.twoPlan, f.twoResult, {
+		fetchImpl: f.fetchImpl,
+		now: () => NOW,
+		...f.pins,
+	})
+	const results = await applyRemainingPlan(
+		CONFIG,
+		f.source,
+		f.preview,
+		f.twoPlan,
+		f.twoResult,
+		plan,
+		remainingPlanDigest(plan),
+		{
+			fetchImpl: f.fetchImpl,
+			now: () => NOW + 60_000,
+			kickFixDeployed: true,
+			authFixDeployed: true,
+			...f.pins,
+		}
+	)
+	assert.deepEqual(
+		results.map((result) => result.userId),
+		f.source.matches.slice(-3).map((candidate) => candidate.userId)
+	)
+	assert.equal(
+		f.calls.filter((call) => call.url.pathname === '/v1/servers/srv-1/local-accounts:delete')
+			.length,
+		3
+	)
 })
 
 test('rejects a changed first-two result log before any request', async () => {
