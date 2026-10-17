@@ -128,11 +128,22 @@ export interface MumbleDeleteResult {
 	notFound: string[]
 	/**
 	 * Subjects whose deletion could not be confirmed (murmur-control failure).
-	 * These are persisted in the DO and retried by alarm until confirmed —
-	 * callers may treat them as eventually deleted.
+	 * These are persisted in the DO. Alarm retries them only while Core still
+	 * authorizes the original deletion intent; a later state change can cancel
+	 * the retry.
 	 */
 	queued: string[]
 }
+
+/** Why Core requested deletion; retries must revalidate this intent. */
+export type MumbleDeleteIntent =
+	| 'offboarding'
+	| 'blacklist'
+	| 'user_deleted'
+	| 'admin_manual'
+	| 'tempop_terminal'
+
+export type MumbleDeleteRetryDecision = 'retry' | 'cancel' | 'defer'
 
 /**
  * Public RPC interface for the Mumble Durable Object.
@@ -212,9 +223,13 @@ export interface Mumble extends DurableObject {
 	/**
 	 * Delete the listed accounts (disconnects sessions, unregisters Murmur
 	 * users). Missing accounts are reported as notFound, not errors. Subjects
-	 * that cannot be confirmed deleted are queued in the DO and retried by
-	 * alarm until murmur-control confirms them gone — this method never
-	 * throws for control-plane outages.
+	 * that cannot be confirmed deleted are queued in the DO. Retries recheck
+	 * the deletion intent with Core before touching murmur-control. This method
+	 * never throws for control-plane outages.
 	 */
-	deleteAccounts(serverId: string, subjectIds: string[]): Promise<MumbleDeleteResult>
+	deleteAccounts(
+		serverId: string,
+		subjectIds: string[],
+		intent: MumbleDeleteIntent
+	): Promise<MumbleDeleteResult>
 }

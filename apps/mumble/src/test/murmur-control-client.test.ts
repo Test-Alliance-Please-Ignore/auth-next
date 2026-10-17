@@ -101,6 +101,37 @@ describe('MurmurControlClient', () => {
 		expect(result).toBeNull()
 	})
 
+	it('does not treat an unrelated HTTP 404 as a missing local account', async () => {
+		const fetchMock = vi.fn().mockResolvedValue(
+			new Response(JSON.stringify({ error: 'Route not found', details: null }), {
+				status: 404,
+			})
+		)
+		const client = new MurmurControlClient({
+			baseUrl: 'https://murmur.test/',
+			token: 'secret-token',
+			fetcher: { fetch: fetchMock },
+		})
+
+		await expect(client.getLocalAccount('srv', 'user-1')).rejects.toThrow('Route not found')
+	})
+
+	it('deletes a projected user through the scoped 204 endpoint', async () => {
+		const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }))
+		const client = new MurmurControlClient({
+			baseUrl: 'https://murmur.test/',
+			token: 'secret-token',
+			fetcher: { fetch: fetchMock },
+		})
+
+		await client.deleteProjectedUser('srv', 'user-1')
+
+		expect(fetchMock).toHaveBeenCalledWith(
+			'https://murmur.test/v1/servers/srv/users/user-1',
+			expect.objectContaining({ method: 'DELETE' })
+		)
+	})
+
 	it('maps statuses to typed error codes', async () => {
 		const cases: Array<[number, string]> = [
 			[400, 'validation'],
@@ -121,12 +152,10 @@ describe('MurmurControlClient', () => {
 				fetcher: { fetch: fetchMock },
 			})
 
-			const error = await client
-				.getUserState('srv')
-				.then(
-					() => null,
-					(e: unknown) => e
-				)
+			const error = await client.getUserState('srv').then(
+				() => null,
+				(e: unknown) => e
+			)
 			expect(error).toBeInstanceOf(MurmurControlApiError)
 			expect((error as MurmurControlApiError).code).toBe(code)
 			expect((error as MurmurControlApiError).message).toBe('boom')
@@ -154,9 +183,11 @@ describe('MurmurControlClient', () => {
 	})
 
 	it('omits the authorization header when no token is configured', async () => {
-		const fetchMock = vi.fn().mockResolvedValue(
-			new Response(JSON.stringify({ serverId: 'srv', users: [] }), { status: 200 })
-		)
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValue(
+				new Response(JSON.stringify({ serverId: 'srv', users: [] }), { status: 200 })
+			)
 		const client = new MurmurControlClient({
 			baseUrl: 'https://murmur.test/',
 			fetcher: { fetch: fetchMock },
@@ -171,9 +202,11 @@ describe('MurmurControlClient', () => {
 	})
 
 	it('falls back to global fetch when no mTLS binding is configured', async () => {
-		const fetchMock = vi.fn().mockResolvedValue(
-			new Response(JSON.stringify({ serverId: 'srv', users: [] }), { status: 200 })
-		)
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValue(
+				new Response(JSON.stringify({ serverId: 'srv', users: [] }), { status: 200 })
+			)
 		vi.stubGlobal('fetch', fetchMock)
 
 		const client = new MurmurControlClient({
@@ -214,7 +247,7 @@ describe('MurmurControlClient', () => {
 
 		await expect(client.getUserState('srv')).rejects.toThrow(
 			'murmur-control requires mTLS or a bearer token in production-like environments'
-			)
+		)
 	})
 
 	it('rejects missing environment in the absence of a dev marker', async () => {

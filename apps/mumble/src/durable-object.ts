@@ -10,6 +10,7 @@ import type {
 	LocalAccountSnapshot,
 	Mumble,
 	MumbleAccountStatus,
+	MumbleDeleteIntent,
 	MumbleDeleteResult,
 	MumbleErrorCode,
 	MumbleGroupAssignment,
@@ -38,6 +39,33 @@ const PENDING_DELETE_PREFIX = 'pending-delete:'
 
 /** Retry interval for pending deletions */
 const PENDING_DELETE_RETRY_MS = 5 * 60 * 1000
+
+interface PendingDelete {
+	intent: MumbleDeleteIntent
+	requestedAt: number
+}
+
+const DELETE_INTENTS: ReadonlySet<string> = new Set([
+	'offboarding',
+	'blacklist',
+	'user_deleted',
+	'admin_manual',
+	'tempop_terminal',
+])
+
+function isPendingDelete(value: unknown): value is PendingDelete {
+	if (typeof value !== 'object' || value === null) return false
+	const pending = value as Partial<PendingDelete>
+	return (
+		typeof pending.intent === 'string' &&
+		DELETE_INTENTS.has(pending.intent) &&
+		typeof pending.requestedAt === 'number' &&
+		Number.isFinite(pending.requestedAt)
+	)
+}
+
+/** Expected while the control API's scoped projection repair is disabled. */
+const PROJECTION_REPAIR_DISABLED_MESSAGE = 'Mumble projection-only deletion is not enabled'
 
 /** Durable state prefix for on-demand user sync cooldown leases. */
 const USER_SYNC_PREFIX = 'user-sync:'
@@ -228,6 +256,8 @@ export class MumbleDO extends DurableObject<Env> implements Mumble {
 					throw new MurmurControlApiError(500, 'batchSync did not return the provisioned account')
 				}
 
+				// The new account is a later explicit intent than any pending delete.
+				await this.clearPendingDelete(serverId, input.subjectId)
 				return { account: toAccountStatus(snapshot), password }
 			} catch (error) {
 				this.handleError(error, 'provisionAccount', serverId)
@@ -261,7 +291,6 @@ export class MumbleDO extends DurableObject<Env> implements Mumble {
 						passwordVerifier,
 					},
 				])
-
 				return { password }
 			} catch (error) {
 				this.handleError(error, 'resetPassword', serverId)
@@ -534,138 +563,210 @@ export class MumbleDO extends DurableObject<Env> implements Mumble {
 		})
 	}
 
-	async deleteAccounts(serverId: string, subjectIds: string[]): Promise<MumbleDeleteResult> {
+	async deleteAccounts(
+		serverId: string,
+		subjectIds: string[],
+		intent: MumbleDeleteIntent
+	): Promise<MumbleDeleteResult> {
+		if (!DELETE_INTENTS.has(intent)) {
+			throw typedError('validation', 'A recognized Mumble deletion intent is required')
+		}
 		if (subjectIds.length === 0) {
 			return { deleted: [], notFound: [], queued: [] }
 		}
 
-		return this.serialize(() => this.deleteAccountsInner(serverId, subjectIds))
+		return this.serialize(() => this.deleteAccountsInner(serverId, subjectIds, true, intent))
 	}
 
 	/**
 	 * Delete accounts, queueing failures for alarm-driven retry.
 	 *
-	 * Deletion must be durable: the caller (user deletion in core) proceeds
-	 * regardless, and once the upstream user row is gone nothing else will
-	 * ever disable the voice account. Any subjects that cannot be confirmed
-	 * deleted are persisted to DO storage and retried by alarm() until
-	 * murmur-control confirms them gone.
+	 * Unconfirmed deletions are persisted to DO storage. Alarm retries only
+	 * after Core confirms that the original reason is still valid.
 	 */
 	private async deleteAccountsInner(
 		serverId: string,
-		subjectIds: string[]
+		subjectIds: string[],
+		allowProjectionRepair: boolean,
+		intent: MumbleDeleteIntent
 	): Promise<MumbleDeleteResult> {
 		const deleted: string[] = []
-		let notFound: string[] = []
-		let pending = [...subjectIds]
+		const notFound: string[] = []
+		const queued: string[] = []
+		let client: MurmurControlClient
 
 		try {
-			// Pre-filter to provisioned accounts: :delete is not idempotent and
-			// returns 404 for missing subjects.
-			const provisioned = await this.findProvisionedSubjects(serverId, subjectIds)
-			notFound = subjectIds.filter((subjectId) => !provisioned.has(subjectId))
-			pending = subjectIds.filter((subjectId) => provisioned.has(subjectId))
-
-			const client = this.client()
-			for (const batch of chunk(pending, CHUNK_SIZE)) {
-				const result = await client.delete(serverId, batch)
-				deleted.push(...result.deletedSubjectIds)
-
-				// On a successful response, anything murmur-control did not list as
-				// deleted no longer exists on its side — treat it as notFound.
-				const confirmed = new Set(result.deletedSubjectIds)
-				notFound.push(...batch.filter((subjectId) => !confirmed.has(subjectId)))
-
-				// Batch is fully resolved; pending keeps only unattempted chunks so
-				// the catch block queues exactly the unresolved remainder.
-				const batchSet = new Set(batch)
-				pending = pending.filter((subjectId) => !batchSet.has(subjectId))
-			}
-
-			return { deleted, notFound, queued: [] }
+			client = this.client()
 		} catch (error) {
-			// Queue everything unresolved for retry instead of surfacing the
-			// failure — the upstream deletion must not be blocked, but the voice
-			// account must not be orphaned either.
 			captureException(error as Error, {
 				tags: { durableObject: 'MumbleDO', method: 'deleteAccounts', serverId },
-				extra: { queuedSubjectIds: pending },
+				extra: { queuedSubjectIds: subjectIds },
 			})
-			await this.queuePendingDeletes(serverId, pending)
-			return { deleted, notFound, queued: pending }
+			await this.queuePendingDeletes(serverId, subjectIds, intent)
+			return { deleted, notFound, queued: [...subjectIds] }
 		}
+
+		const getProjection = async (subjectId: string) => {
+			const state = await client.getUserState(serverId, { subjectId })
+			if (
+				state.serverId !== serverId ||
+				state.users.length > 1 ||
+				state.users.some((user) => user.subjectId !== subjectId)
+			) {
+				throw new Error(`Unexpected Mumble projection response for ${subjectId}`)
+			}
+			return state.users[0] ?? null
+		}
+
+		for (const subjectId of subjectIds) {
+			try {
+				const account = await client.getLocalAccount(serverId, subjectId)
+				const projection = await getProjection(subjectId)
+				if (!account && !projection) {
+					await this.clearPendingDelete(serverId, subjectId)
+					notFound.push(subjectId)
+					continue
+				}
+
+				if (account) {
+					const result = await client.delete(serverId, [subjectId])
+					if (
+						result.serverId !== serverId ||
+						result.deletedSubjectIds.length !== 1 ||
+						result.deletedSubjectIds[0] !== subjectId
+					) {
+						throw new Error(`Mumble delete did not confirm ${subjectId}`)
+					}
+				}
+
+				// A control-plane reload can leave a projection after the local row
+				// disappears. The scoped user route also kicks and unregisters Murmur.
+				if (await client.getLocalAccount(serverId, subjectId)) {
+					throw new Error(`Mumble local account ${subjectId} survived deletion`)
+				}
+				if (await getProjection(subjectId)) {
+					// Scoped projection deletion requires the verified control API.
+					if (!allowProjectionRepair || this.env.MUMBLE_CONTROL_SAFE_PROJECTION_DELETE !== 'true') {
+						throw new Error(PROJECTION_REPAIR_DISABLED_MESSAGE)
+					}
+					await client.deleteProjectedUser(serverId, subjectId)
+				}
+				if (
+					(await client.getLocalAccount(serverId, subjectId)) ||
+					(await getProjection(subjectId))
+				) {
+					throw new Error(`Mumble account ${subjectId} survived deletion verification`)
+				}
+				await this.clearPendingDelete(serverId, subjectId)
+				deleted.push(subjectId)
+			} catch (error) {
+				queued.push(subjectId)
+				// The feature gate deliberately keeps projection-only orphans queued.
+				if (!(error instanceof Error && error.message === PROJECTION_REPAIR_DISABLED_MESSAGE)) {
+					captureException(error as Error, {
+						tags: { durableObject: 'MumbleDO', method: 'deleteAccounts', serverId },
+						extra: { queuedSubjectIds: [subjectId] },
+					})
+				}
+				// Persist the failed subject before another network request can time out.
+				await this.queuePendingDeletes(serverId, [subjectId], intent)
+			}
+		}
+
+		return { deleted, notFound, queued }
+	}
+
+	/** Remove a completed or superseded deletion. */
+	private async clearPendingDelete(serverId: string, subjectId: string): Promise<void> {
+		await this.state.storage.delete(`${PENDING_DELETE_PREFIX}${serverId}:${subjectId}`)
 	}
 
 	/** Persist failed deletions and arm the retry alarm. */
-	private async queuePendingDeletes(serverId: string, subjectIds: string[]): Promise<void> {
+	private async queuePendingDeletes(
+		serverId: string,
+		subjectIds: string[],
+		intent: MumbleDeleteIntent
+	): Promise<void> {
 		if (subjectIds.length === 0) return
-		const entries: Record<string, number> = {}
+		const entries: Record<string, PendingDelete> = {}
 		for (const subjectId of subjectIds) {
-			entries[`${PENDING_DELETE_PREFIX}${serverId}:${subjectId}`] = Date.now()
+			entries[`${PENDING_DELETE_PREFIX}${serverId}:${subjectId}`] = {
+				intent,
+				requestedAt: Date.now(),
+			}
 		}
 		await this.state.storage.put(entries)
-		const existingAlarm = await this.state.storage.getAlarm()
-		if (existingAlarm === null) {
-			await this.state.storage.setAlarm(Date.now() + PENDING_DELETE_RETRY_MS)
-		}
+		await this.scheduleUserSyncAlarm(Date.now() + PENDING_DELETE_RETRY_MS)
 	}
 
 	/**
-	 * Alarm handler: retry pending deletions until murmur-control confirms
-	 * each account gone, then clear the queue entries.
+	 * Alarm handler: recheck every pending deletion against Core before retrying.
+	 * Legacy numeric entries have no original intent, so treat them as
+	 * offboarding or terminal temp-op only after the same Core recheck.
 	 */
 	async alarm(): Promise<void> {
-		const pendingEntries = await this.state.storage.list<number>({
+		const pendingEntries = await this.state.storage.list<PendingDelete | number>({
 			prefix: PENDING_DELETE_PREFIX,
 		})
-		const nowMs = Date.now()
-		const nextUserSyncCleanupAt = await this.cleanupUserSyncStates(nowMs)
-		if (pendingEntries.size === 0) {
-			if (nextUserSyncCleanupAt === null) {
-				await this.state.storage.deleteAlarm()
-			} else {
-				await this.state.storage.setAlarm(nextUserSyncCleanupAt)
-			}
-			return
-		}
 
-		// Group queued subjects by serverId. subjectIds are UUIDs (no colons),
-		// so the last colon separates serverId from subjectId.
-		const byServer = new Map<string, string[]>()
 		for (const key of pendingEntries.keys()) {
+			// Server IDs contain no colons, while temp-op subject IDs do.
 			const rest = key.slice(PENDING_DELETE_PREFIX.length)
-			const sep = rest.lastIndexOf(':')
+			const sep = rest.indexOf(':')
 			if (sep === -1) continue
 			const serverId = rest.slice(0, sep)
 			const subjectId = rest.slice(sep + 1)
-			const list = byServer.get(serverId) ?? []
-			list.push(subjectId)
-			byServer.set(serverId, list)
+
+			// Process one subject at a time so interactive mutations can run
+			// between retries. The re-read and Core decision share the same lock.
+			await this.serialize(async () => {
+				const value = await this.state.storage.get<PendingDelete | number>(key)
+				// Older releases persisted only a timestamp. Their original reason
+				// cannot be recovered; use the conservative current-state rule.
+				const intent = isPendingDelete(value)
+					? value.intent
+					: typeof value === 'number' && Number.isFinite(value)
+						? subjectId.startsWith('tempop:')
+							? 'tempop_terminal'
+							: 'offboarding'
+						: null
+				if (!intent) return
+				let decision: 'retry' | 'cancel' | 'defer'
+				try {
+					decision = await this.env.CORE.decideMumbleDeleteRetry(serverId, subjectId, intent)
+				} catch (error) {
+					captureException(error as Error, {
+						tags: { durableObject: 'MumbleDO', method: 'alarm', serverId },
+						extra: { subjectId, intent },
+					})
+					return
+				}
+				if (decision === 'cancel') {
+					await this.clearPendingDelete(serverId, subjectId)
+				} else if (decision === 'retry') {
+					await this.deleteAccountsInner(serverId, [subjectId], true, intent)
+				}
+			})
 		}
 
-		for (const [serverId, subjectIds] of byServer) {
-			// Still-failing subjects are re-queued (and the alarm re-armed) by
-			// deleteAccountsInner via queuePendingDeletes.
-			const result = await this.serialize(() => this.deleteAccountsInner(serverId, subjectIds))
-			const resolved = [...result.deleted, ...result.notFound]
-			if (resolved.length > 0) {
-				await this.state.storage.delete(
-					resolved.map((subjectId) => `${PENDING_DELETE_PREFIX}${serverId}:${subjectId}`)
+		// Queue writes also hold the mutation lock. Re-read and schedule under
+		// it so a concurrent failed delete cannot lose its retry alarm.
+		await this.serialize(async () => {
+			const remainingPendingEntries = await this.state.storage.list<PendingDelete | number>({
+				prefix: PENDING_DELETE_PREFIX,
+			})
+			const nextUserSyncCleanupAt = await this.cleanupUserSyncStates(Date.now())
+			if (remainingPendingEntries.size === 0) {
+				if (nextUserSyncCleanupAt === null) {
+					await this.state.storage.deleteAlarm()
+				} else {
+					await this.state.storage.setAlarm(nextUserSyncCleanupAt)
+				}
+			} else {
+				await this.scheduleUserSyncAlarm(
+					Math.min(Date.now() + PENDING_DELETE_RETRY_MS, nextUserSyncCleanupAt ?? Infinity)
 				)
 			}
-		}
-
-		const remainingPendingEntries = await this.state.storage.list<number>({
-			prefix: PENDING_DELETE_PREFIX,
 		})
-		if (remainingPendingEntries.size === 0) {
-			if (nextUserSyncCleanupAt === null) {
-				await this.state.storage.deleteAlarm()
-			} else {
-				await this.state.storage.setAlarm(nextUserSyncCleanupAt)
-			}
-		} else if (nextUserSyncCleanupAt !== null) {
-			await this.scheduleUserSyncAlarm(nextUserSyncCleanupAt)
-		}
 	}
 }

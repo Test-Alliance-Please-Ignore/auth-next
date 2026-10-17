@@ -17,6 +17,7 @@
 		"NAME": "mumble",
 		"ENVIRONMENT": "production",
 		"SENTRY_RELEASE": "0.1.0-1d563e5",
+		"MUMBLE_CONTROL_SAFE_PROJECTION_DELETE": "false"
 		// Optional bearer token if murmur-control still expects app-layer auth.
 		// MURMUR_CONTROL_TOKEN is a secret: pnpm -F mumble wrangler secret put MURMUR_CONTROL_TOKEN
 	},
@@ -28,6 +29,7 @@
 			}
 		]
 	},
+	"services": [{ "binding": "CORE", "service": "core", "entrypoint": "CoreWorker" }],
 	"migrations": [
 		{
 			"tag": "v1",

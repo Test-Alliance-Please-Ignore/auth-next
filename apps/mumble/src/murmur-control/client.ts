@@ -1,12 +1,14 @@
+import { z } from 'zod'
+
 import {
 	BatchAssignLocalAccountGroupsResponseSchema,
 	BatchDeleteLocalAccountsResponseSchema,
 	BatchDisableLocalAccountsResponseSchema,
 	BatchEnableLocalAccountsResponseSchema,
 	BatchSyncLocalAccountsResponseSchema,
+	formatMumbleError,
 	LocalAccountResponseSchema,
 	MurmurControlErrorResponseSchema,
-	formatMumbleError,
 	UserProjectionStateResponseSchema,
 } from '@repo/mumble'
 
@@ -107,7 +109,9 @@ export class MurmurControlClient {
 		const hasMtls = this.fetcher != null
 		const hasToken = (this.token?.trim().length ?? 0) > 0
 		if (!hasMtls && !hasToken) {
-			throw new Error('murmur-control requires mTLS or a bearer token in production-like environments')
+			throw new Error(
+				'murmur-control requires mTLS or a bearer token in production-like environments'
+			)
 		}
 	}
 
@@ -152,7 +156,7 @@ export class MurmurControlClient {
 			throw new MurmurControlApiError(response.status, message, details)
 		}
 
-		return schema.parse(await response.json())
+		return schema.parse(response.status === 204 ? undefined : await response.json())
 	}
 
 	/** Get a local account snapshot, or null when it does not exist. */
@@ -163,9 +167,16 @@ export class MurmurControlClient {
 				`/v1/servers/${encodeURIComponent(serverId)}/local-accounts/${encodeURIComponent(subjectId)}`,
 				LocalAccountResponseSchema
 			)
+			if (result.serverId !== serverId || result.account.subjectId !== subjectId) {
+				throw new Error(`Unexpected murmur-control local account response for ${subjectId}`)
+			}
 			return result.account
 		} catch (error) {
-			if (error instanceof MurmurControlApiError && error.code === 'not_found') {
+			if (
+				error instanceof MurmurControlApiError &&
+				error.status === 404 &&
+				error.message === 'Local account not found'
+			) {
 				return null
 			}
 			throw error
@@ -246,6 +257,15 @@ export class MurmurControlClient {
 			`/v1/servers/${encodeURIComponent(serverId)}/local-accounts:delete`,
 			BatchDeleteLocalAccountsResponseSchema,
 			{ subjectIds }
+		)
+	}
+
+	/** Remove a projected user, including any Murmur registration or connected session. */
+	async deleteProjectedUser(serverId: string, subjectId: string): Promise<void> {
+		await this.request(
+			'DELETE',
+			`/v1/servers/${encodeURIComponent(serverId)}/users/${encodeURIComponent(subjectId)}`,
+			z.void()
 		)
 	}
 }

@@ -18,7 +18,9 @@ import type { Hr } from '@repo/hr'
 import type {
 	Mumble,
 	MumbleAccountStatus,
+	MumbleDeleteIntent,
 	MumbleDeleteResult,
+	MumbleDeleteRetryDecision,
 	MumbleGroupAssignment,
 	MumbleProfileAssignment,
 	MumbleSyncGroupsResult,
@@ -254,6 +256,45 @@ async function getUserGroupNames(env: Env, userId: string): Promise<UserMumbleGr
 	return { groups: [...new Set(groups)], eligible: true }
 }
 
+/** Recheck the source of a queued delete immediately before an alarm retries it. */
+export async function decideMumbleDeleteRetry(
+	env: Env,
+	serverId: string,
+	subjectId: string,
+	intent: MumbleDeleteIntent
+): Promise<MumbleDeleteRetryDecision> {
+	if (serverId !== env.MUMBLE_SERVER_ID) return 'defer'
+
+	if (intent === 'offboarding' || intent === 'blacklist') {
+		return (await getUserGroupNames(env, subjectId)).eligible ? 'cancel' : 'retry'
+	}
+	if (intent === 'admin_manual') return 'retry'
+
+	const db = createDb(env.DATABASE_URL)
+	if (intent === 'user_deleted') {
+		const user = await db.query.users.findFirst({
+			where: eq(users.id, subjectId),
+			columns: { id: true },
+		})
+		return user ? 'defer' : 'retry'
+	}
+
+	const parts = subjectId.split(':')
+	if (parts.length !== 3 || parts[0] !== 'tempop') return 'defer'
+	const guest = await db.query.mumbleTempopGuests.findFirst({
+		where: eq(mumbleTempopGuests.subjectId, subjectId),
+		columns: { status: true, tempopId: true, characterId: true },
+	})
+	if (guest && (guest.tempopId !== parts[1] || guest.characterId !== parts[2])) return 'defer'
+	const tempop = await db.query.mumbleTempops.findFirst({
+		where: eq(mumbleTempops.id, parts[1]!),
+		columns: { status: true, expiresAt: true },
+	})
+	if (tempop?.status === 'active' && tempop.expiresAt.getTime() > Date.now()) return 'defer'
+	if (!tempop && guest?.status === 'active') return 'defer'
+	return 'retry'
+}
+
 /** Get the user's Mumble account status, or null when not provisioned. */
 export async function getMumbleAccount(
 	env: Env,
@@ -410,7 +451,11 @@ export async function revokeIneligibleMumbleAccounts(
 	userIds: string[],
 	reason?: string
 ): Promise<MumbleDeleteResult> {
-	const result = await getMumbleStub(env).deleteAccounts(env.MUMBLE_SERVER_ID, userIds)
+	const result = await getMumbleStub(env).deleteAccounts(
+		env.MUMBLE_SERVER_ID,
+		userIds,
+		'offboarding'
+	)
 	logger.info('[Mumble] Reconciled ineligible accounts', {
 		reason,
 		deleted: result.deleted,
@@ -433,7 +478,7 @@ export async function enforceBlacklistedMumbleAccess(
 	userId: string,
 	reason = 'user-blacklisted'
 ): Promise<void> {
-	const result = await deleteMumbleAccounts(env, [userId])
+	const result = await deleteMumbleAccounts(env, [userId], 'blacklist')
 	if (!result) {
 		return
 	}
@@ -517,17 +562,18 @@ export async function syncUsersMumbleProfiles(
 /**
  * Best-effort deletion of Mumble accounts (used from user-deletion paths).
  * Never throws — deletion of the auth-next user must not be blocked. On
- * murmur-control failure the mumble DO queues the deletion and retries by
- * alarm until confirmed, so a `queued` outcome is still eventually deleted.
+ * murmur-control failure the Mumble DO queues the deletion. Alarm retries
+ * only while Core confirms that the original reason still applies.
  * Revocation must run even when the UI feature flag is off: existing Mumble
  * credentials remain valid until the server account is removed.
  */
 export async function deleteMumbleAccounts(
 	env: Env,
-	userIds: string[]
+	userIds: string[],
+	intent: Exclude<MumbleDeleteIntent, 'offboarding'>
 ): Promise<MumbleDeleteResult | null> {
 	try {
-		const result = await getMumbleStub(env).deleteAccounts(env.MUMBLE_SERVER_ID, userIds)
+		const result = await getMumbleStub(env).deleteAccounts(env.MUMBLE_SERVER_ID, userIds, intent)
 		if (result.queued.length > 0) {
 			logger.warn('[Mumble] Account deletion queued for retry', {
 				queued: result.queued,
@@ -588,7 +634,7 @@ async function rollbackIfTempopClosed(
 	}
 
 	await getMumbleStub(env)
-		.deleteAccounts(env.MUMBLE_SERVER_ID, [subjectId])
+		.deleteAccounts(env.MUMBLE_SERVER_ID, [subjectId], 'tempop_terminal')
 		.catch((error) => {
 			logger.error('[Mumble] Failed to roll back orphaned temp-op guest', {
 				tempopId,
